@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { constantTimeEquals } from '@/middleware';
+import { constantTimeEquals } from '@/proxy';
 
 describe('constantTimeEquals', () => {
   it('matches identical strings', () => {

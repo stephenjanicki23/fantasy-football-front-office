@@ -1,6 +1,6 @@
 # Deployment
 
-The app is a standard Next.js 16 server application. It needs a Node runtime — it is not
+The app is a standard Next.js 16 server application at the root of this repository. It needs a Node runtime — it is not
 a static site, because rosters, projections and every recommendation are computed
 server-side and the ESPN cookies must never reach the browser.
 
@@ -19,30 +19,30 @@ Verified with zero environment variables set: all eleven pages and the analysis 
 200, the "Synthetic sample data" banner renders, the ESPN page reports "Not configured",
 and no credential values appear anywhere in the served HTML.
 
-1. Go to <https://vercel.com/new> and import `stephenjanicki23/rellax`.
-2. Select branch `claude/fantasy-football-ai-manager-bbqnyx`.
-3. Set **Root Directory** to `fantasy-football`. (This is the step people miss — without
-   it the build fails, because the repository root is an unrelated JS library.)
-4. Skip environment variables entirely. Deploy.
+1. Go to <https://vercel.com/new> and import this repository.
+2. Skip environment variables entirely. Deploy.
 
-That gives you a shareable URL in a couple of minutes. `vercel.json` marks it `noindex`,
-so it will not turn up in search results.
+There is no root directory or branch to configure: the app is at the repository root, so
+Vercel detects Next.js on the first screen. You get a shareable URL in a couple of
+minutes, and `vercel.json` marks it `noindex` so it will not turn up in search results.
 
 When you later want it pointed at your real league, add the variables from the table below
 — including `DASHBOARD_PASSWORD`, which becomes mandatory the moment ESPN cookies are
 present.
 
-> A one-click deploy button (`https://vercel.com/new/clone?repository-url=…`) would
-> normally go here. `vercel.com` is unreachable from the environment this was built in, so
-> the exact parameter format could not be confirmed — the four steps above are the path
-> that is certain to work.
+Prefer the terminal? From a clone of this repository:
+
+```bash
+npx vercel          # preview deployment
+npx vercel --prod   # promote to production
+```
 
 ---
 
 ## Before you deploy: the password gate
 
 This app has no user accounts yet. A deployed instance holds your ESPN session cookies
-server-side, so anyone who found the URL could read your league. `src/middleware.ts`
+server-side, so anyone who found the URL could read your league. `src/proxy.ts`
 enforces this rather than trusting you to remember:
 
 | `DASHBOARD_PASSWORD` | `ESPN_S2` / `ESPN_SWID` | Behaviour |
@@ -63,15 +63,13 @@ Replace this with real authentication when accounts land (PROJECT_PLAN.md, phase
 The app lives in a subdirectory, so the root directory must be set.
 
 **Dashboard**
-1. New Project → import `stephenjanicki23/rellax`.
-2. Set **Root Directory** to `fantasy-football`. Framework auto-detects as Next.js.
-3. Add environment variables (below) under Settings → Environment Variables.
-4. Deploy.
+1. New Project → import this repository. Framework auto-detects as Next.js.
+2. Add environment variables (below) under Settings → Environment Variables.
+3. Deploy.
 
 **CLI**
 ```bash
-cd fantasy-football
-npx vercel link          # choose the project; set root directory to this folder
+npx vercel link          # choose or create the project
 npx vercel env add DASHBOARD_PASSWORD production
 npx vercel env add ESPN_LEAGUE_ID production
 npx vercel env add ESPN_SEASON production
@@ -93,7 +91,6 @@ deployment will not be indexed or framed.
 self-contained server bundle rather than the whole `node_modules` tree.
 
 ```bash
-cd fantasy-football
 docker build -t ffo:latest .
 
 docker run --rm -p 3000:3000 \

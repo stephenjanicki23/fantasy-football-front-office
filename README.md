@@ -6,14 +6,10 @@ An AI-assisted fantasy football draft assistant and in-season team manager, buil
 It exists to answer one question: **"Given the current state of my league, what should I
 do next?"** It is not a rankings site.
 
-> **Repository note.** This app lives in `fantasy-football/` inside a repository that also
-> contains the unrelated [`rellax`](https://github.com/dixonandmoe/rellax) parallax
-> library. Nothing in that library is modified by this project.
-
-Design documents live at the repository root:
-[PROJECT_PLAN.md](../PROJECT_PLAN.md) ·
-[ARCHITECTURE.md](../ARCHITECTURE.md) ·
-[ESPN_INTEGRATION.md](../ESPN_INTEGRATION.md)
+Design documents:
+[PROJECT_PLAN.md](./PROJECT_PLAN.md) ·
+[ARCHITECTURE.md](./ARCHITECTURE.md) ·
+[ESPN_INTEGRATION.md](./ESPN_INTEGRATION.md)
 
 ---
 
@@ -131,11 +127,10 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) — Vercel or the included `Dockerfile`.
 
 For a shareable demo, deploy with **no environment variables**: the app runs on the
 labelled synthetic sample league, so there is nothing real to expose. Import the repo at
-<https://vercel.com/new>, pick this branch, and set **Root Directory** to
-`fantasy-football` — the repository root is an unrelated JS library, so the build fails
-without it.
+<https://vercel.com/new> and deploy — the app is at the repository root, so Next.js is
+detected automatically and there is no root directory to configure.
 
-There are no user accounts yet, so `src/middleware.ts` enforces a password gate: with
+There are no user accounts yet, so `src/proxy.ts` enforces a password gate: with
 ESPN credentials configured and no `DASHBOARD_PASSWORD`, the app refuses to serve rather
 than exposing your league to anyone with the URL.
 

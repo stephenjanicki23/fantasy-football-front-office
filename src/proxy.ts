@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 /**
- * Password gate for public deployments.
+ * Password gate for public deployments (Next.js proxy convention).
  *
  * This app has no user accounts yet, and a deployed instance holds ESPN session cookies
  * server-side. Rather than ship something that is safe only if you remember to configure
@@ -14,7 +14,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  *
  * Replace this with real authentication when accounts land; see PROJECT_PLAN.md phase 7.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const password = process.env.DASHBOARD_PASSWORD;
   const hasEspnCredentials = Boolean(process.env.ESPN_S2 && process.env.ESPN_SWID);
 
