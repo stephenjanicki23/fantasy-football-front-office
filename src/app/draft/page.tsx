@@ -1,4 +1,6 @@
 import { recommendDraftPick } from '@/domain/draft-engine';
+import { buildTiers } from '@/domain/tiers';
+import { DraftTracker, type PoolPlayer } from '@/components/draft-tracker';
 import { analyzeAdp } from '@/domain/adp';
 import { valuePlayers } from '@/domain/valuation';
 import {
@@ -39,6 +41,33 @@ export default async function DraftPage() {
   });
   const adpAnalysis = analyzeAdp(valuation.players, state.adp);
 
+  // Hand the whole pool to the tracker once, so search, position filtering and sorting
+  // are instant client-side; only the analysis round-trips as picks are entered.
+  buildTiers(valuation.players);
+  const rosteredIds = new Set(state.teams.flatMap((t) => t.roster.map((r) => r.playerId)));
+  const initialPool: PoolPlayer[] = valuation.players
+    .filter((valued) => !rosteredIds.has(valued.player.id))
+    .map((valued) => ({
+      id: valued.player.id,
+      name: valued.player.name,
+      position: valued.player.position,
+      nflTeam: valued.player.nflTeam ?? null,
+      byeWeek: valued.player.byeWeek ?? null,
+      status: valued.player.status,
+      projectedPoints: valued.projectedPoints,
+      leagueValue: valued.leagueValue,
+      vor: valued.vor,
+      positionRank: valued.positionRank,
+      overallRank: valued.overallRank,
+      tier: valued.tier ?? null,
+    }));
+
+  const teamNames = [...state.teams]
+    .sort((a, b) => (a.draftSlot ?? 0) - (b.draftSlot ?? 0))
+    .map((team) => team.name);
+  const myTeamSlot =
+    state.teams.find((team) => team.isMyTeam)?.draftSlot ?? state.config.myDraftSlot ?? null;
+
   return (
     <>
       {loaded.isSample && <SampleDataBanner warnings={loaded.warnings} />}
@@ -66,6 +95,15 @@ export default async function DraftPage() {
           <Stat label="Confidence" value={formatPercent(recommendation.confidence)} />
         </dl>
       </div>
+
+      <DraftTracker
+        leagueId={state.config.id}
+        teamCount={state.config.teamCount}
+        draftRounds={state.config.draftRounds}
+        initialPool={initialPool}
+        initialMyDraftSlot={myTeamSlot}
+        teamNames={teamNames}
+      />
 
       {/* 2-QB scarcity engine */}
       <Card

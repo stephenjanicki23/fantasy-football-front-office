@@ -45,6 +45,11 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   replacement level is QB17-ish rather than QB9 — every downstream number inherits that.
 - Opponent next-pick prediction, pick-squeeze detection, dynamic tiers, ADP vs. this
   league's value (values and reaches).
+- **Live draft tracker** — enter each pick as it happens, with player search, position
+  filter and sorting. ESPN's draft room has no usable feed (ESPN_INTEGRATION.md), so the
+  board is entered manually and saved to the browser, surviving a mid-draft refresh.
+  Every pick re-runs the engine, because replacement level, tiers and scarcity all move
+  as the board drains.
 
 **Season**
 - Weekly "what should I do?" report: lineup changes, waiver claims, trade offers.
