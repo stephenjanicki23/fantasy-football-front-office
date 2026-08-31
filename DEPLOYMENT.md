@@ -87,8 +87,11 @@ deployment will not be indexed or framed.
 
 ## Option B — Container
 
-`next.config.ts` sets `output: 'standalone'`, so the runtime image carries a
-self-contained server bundle rather than the whole `node_modules` tree.
+`next.config.ts` sets `output: 'standalone'` when it is **not** building on Vercel, so the
+runtime image carries a self-contained server bundle rather than the whole `node_modules`
+tree. Vercel builds its own serverless output and sets `VERCEL=1`; forcing standalone
+there fights that pipeline and fails the deployment after the build completes, so the
+config skips it.
 
 ```bash
 docker build -t ffo:latest .
