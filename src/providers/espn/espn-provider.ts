@@ -25,6 +25,7 @@ import {
   mapPlayer,
   mapTeam,
   mapTransactions,
+  resolveMyTeam,
   type EspnLeaguePayload,
   type EspnPlayer,
   type MyTeamIdentity,
@@ -113,9 +114,12 @@ export class EspnProvider implements LeagueProvider {
     if (!result.ok || !result.data) return { ...result, data: null } as ProviderResult<FantasyTeam[]>;
 
     const config = mapLeagueConfig(result.data);
-    const teams = (result.data.teams ?? []).map((team) =>
+    const mapped = (result.data.teams ?? []).map((team) =>
       mapTeam(team, config.faabBudget, this.myTeam),
     );
+    // Reconcile across the league so exactly one team is mine, even if the id and the
+    // name disagree.
+    const { teams } = resolveMyTeam(mapped, this.myTeam);
     return { ...result, data: teams };
   }
 
@@ -189,8 +193,9 @@ export class EspnProvider implements LeagueProvider {
 
     const payload = result.data;
     const config = mapLeagueConfig(payload);
-    const teams = (payload.teams ?? []).map((team) =>
-      mapTeam(team, config.faabBudget, this.myTeam),
+    const { teams } = resolveMyTeam(
+      (payload.teams ?? []).map((team) => mapTeam(team, config.faabBudget, this.myTeam)),
+      this.myTeam,
     );
 
     // Players on rosters come embedded in mRoster.

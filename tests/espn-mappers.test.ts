@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  resolveMyTeam,
   extractStatLine,
   mapDraft,
   mapInjuryStatus,
@@ -236,5 +237,62 @@ describe('mapTransactions', () => {
     expect(transactions[0]!.type).toBe('WAIVER');
     expect(transactions[0]!.bidAmount).toBe(17);
     expect(transactions[0]!.playerExternalIds).toEqual(['espn-999']);
+  });
+});
+
+describe('resolveMyTeam', () => {
+  const league = () => [
+    mapTeam({ id: 1, name: 'Bijan Mustardson' }, 100),
+    mapTeam({ id: 7, name: 'Trumps Shooters' }, 100),
+    mapTeam({ id: 8, name: 'Weaponized Autism' }, 100),
+  ];
+
+  const mine = (teams: ReturnType<typeof league>) => teams.filter((t) => t.isMyTeam);
+
+  it('marks exactly one team by id', () => {
+    const { teams, matchedBy } = resolveMyTeam(league(), { externalId: '7' });
+    expect(matchedBy).toBe('id');
+    expect(mine(teams).map((t) => t.name)).toEqual(['Trumps Shooters']);
+  });
+
+  it('marks exactly one team by name', () => {
+    const { teams, matchedBy } = resolveMyTeam(league(), { name: 'trumps shooters' });
+    expect(matchedBy).toBe('name');
+    expect(mine(teams).map((t) => t.name)).toEqual(['Trumps Shooters']);
+  });
+
+  it('does NOT match a name that is close but not equal', () => {
+    // "Trump Shooters" is a different string from "Trumps Shooters".
+    const { teams, matchedBy } = resolveMyTeam(league(), { name: 'Trump Shooters' });
+    expect(matchedBy).toBe('none');
+    expect(mine(teams)).toHaveLength(0);
+  });
+
+  it('never flags two teams when the id and the name disagree', () => {
+    const { teams, matchedBy, conflict } = resolveMyTeam(league(), {
+      externalId: '8',
+      name: 'Trumps Shooters',
+    });
+    expect(mine(teams)).toHaveLength(1);
+    expect(matchedBy).toBe('id');
+    expect(mine(teams).map((t) => t.name)).toEqual(['Weaponized Autism']);
+    expect(conflict).toEqual({ byId: 'Weaponized Autism', byName: 'Trumps Shooters' });
+  });
+
+  it('reports an ambiguous name rather than guessing', () => {
+    const duplicates = [
+      mapTeam({ id: 1, name: 'Same Name' }, 100),
+      mapTeam({ id: 2, name: 'same  name' }, 100),
+    ];
+    const { teams, matchedBy, ambiguousName } = resolveMyTeam(duplicates, { name: 'Same Name' });
+    expect(matchedBy).toBe('none');
+    expect(teams.filter((t) => t.isMyTeam)).toHaveLength(0);
+    expect(ambiguousName).toHaveLength(2);
+  });
+
+  it('clears any pre-existing flag when nothing is configured', () => {
+    const { teams, matchedBy } = resolveMyTeam(league(), undefined);
+    expect(matchedBy).toBe('none');
+    expect(teams.filter((t) => t.isMyTeam)).toHaveLength(0);
   });
 });

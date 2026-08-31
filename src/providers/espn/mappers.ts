@@ -320,6 +320,57 @@ function normaliseTeamName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+/**
+ * Decide which single team is mine, across the whole league.
+ *
+ * Per-team matching is not enough: if ESPN_TEAM_ID and ESPN_TEAM_NAME disagree, two
+ * teams would both be flagged and the app would silently analyse whichever came first.
+ * The id is the precise identifier, so it wins; the name is the fallback for when no id
+ * is configured. Ambiguity is reported rather than resolved by luck.
+ */
+export interface MyTeamResolution {
+  teams: FantasyTeam[];
+  matchedBy: 'id' | 'name' | 'none';
+  /** Set when the two identifiers point at different teams. */
+  conflict?: { byId: string; byName: string };
+  /** Set when the name matches more than one team. */
+  ambiguousName?: string[];
+}
+
+export function resolveMyTeam(
+  teams: FantasyTeam[],
+  identity: MyTeamIdentity | undefined,
+): MyTeamResolution {
+  const cleared = teams.map((team) => ({ ...team, isMyTeam: false }));
+  if (!identity) return { teams: cleared, matchedBy: 'none' };
+
+  const wantedId = identity.externalId?.trim();
+  const byId = wantedId
+    ? cleared.find((team) => team.id === `espn-team-${wantedId}`)
+    : undefined;
+
+  const wantedName = identity.name ? normaliseTeamName(identity.name) : '';
+  const byName =
+    wantedName.length > 0
+      ? cleared.filter((team) => normaliseTeamName(team.name) === wantedName)
+      : [];
+
+  const chosen = byId ?? (byName.length === 1 ? byName[0] : undefined);
+  if (chosen) chosen.isMyTeam = true;
+
+  const conflict =
+    byId && byName.length === 1 && byName[0] !== byId
+      ? { byId: byId.name, byName: byName[0]!.name }
+      : undefined;
+
+  return {
+    teams: cleared,
+    matchedBy: byId ? 'id' : byName.length === 1 ? 'name' : 'none',
+    conflict,
+    ambiguousName: byName.length > 1 ? byName.map((team) => team.name) : undefined,
+  };
+}
+
 export function mapTeam(
   team: EspnTeamPayload,
   faabBudget: number,
