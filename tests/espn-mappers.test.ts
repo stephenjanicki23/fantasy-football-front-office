@@ -141,9 +141,36 @@ describe('mapTeam', () => {
   });
 
   it('marks my team from the configured external id', () => {
-    expect(mapTeam(payload.teams![0]!, 100, '1').isMyTeam).toBe(true);
-    expect(mapTeam(payload.teams![0]!, 100, '2').isMyTeam).toBe(false);
+    expect(mapTeam(payload.teams![0]!, 100, { externalId: '1' }).isMyTeam).toBe(true);
+    expect(mapTeam(payload.teams![0]!, 100, { externalId: '2' }).isMyTeam).toBe(false);
     expect(mapTeam(payload.teams![0]!, 100).isMyTeam).toBe(false);
+  });
+
+  it('marks my team from the team name, ignoring case and punctuation', () => {
+    const byName = (name: string) => mapTeam(payload.teams![0]!, 100, { name }).isMyTeam;
+    expect(byName('Alpha')).toBe(true);
+    expect(byName('  alpha  ')).toBe(true);
+    expect(byName('ALPHA')).toBe(true);
+    expect(byName('Bravo')).toBe(false);
+  });
+
+  it('matches on either identifier when both are supplied', () => {
+    const identity = { externalId: '99', name: 'Alpha' };
+    expect(mapTeam(payload.teams![0]!, 100, identity).isMyTeam).toBe(true);
+    expect(mapTeam(payload.teams![1]!, 100, identity).isMyTeam).toBe(false);
+  });
+
+  it('never matches on an empty or whitespace-only name', () => {
+    expect(mapTeam(payload.teams![0]!, 100, { name: '' }).isMyTeam).toBe(false);
+    expect(mapTeam(payload.teams![0]!, 100, { name: '   ' }).isMyTeam).toBe(false);
+  });
+
+  it('falls back to location + nickname when ESPN omits name', () => {
+    const team = mapTeam({ id: 7, location: 'Trump', nickname: 'Shooters' }, 100, {
+      name: 'Trump Shooters',
+    });
+    expect(team.name).toBe('Trump Shooters');
+    expect(team.isMyTeam).toBe(true);
   });
 
   it('maps lineup slots and acquisition types', () => {

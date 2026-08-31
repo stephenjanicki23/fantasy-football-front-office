@@ -177,12 +177,17 @@ export function buildSampleProjections(
 }
 
 /** Eight sample teams. Team 1 is "my team". Rosters are optionally pre-filled. */
-export function buildSampleTeams(options: { drafted?: boolean } = {}): FantasyTeam[] {
+export function buildSampleTeams(
+  options: { drafted?: boolean; myTeamName?: string } = {},
+): FantasyTeam[] {
+  // The sample league is synthetic, but naming your own team after the real one makes
+  // the demo legible. Opponent names stay obviously fake.
+  const myTeamName = options.myTeamName?.trim() || 'My Team';
   const teams: FantasyTeam[] = [];
   for (let i = 0; i < 8; i++) {
     teams.push({
       id: `team-${i + 1}`,
-      name: i === 0 ? 'My Team' : `Team ${String.fromCharCode(65 + i)}`,
+      name: i === 0 ? myTeamName : `Team ${String.fromCharCode(65 + i)}`,
       ownerName: i === 0 ? 'You' : `Manager ${String.fromCharCode(65 + i)}`,
       isMyTeam: i === 0,
       draftSlot: i + 1,
@@ -294,12 +299,12 @@ export function orderedSamplePool(): string[] {
 }
 
 export function buildSampleLeagueState(
-  options: { drafted?: boolean; currentWeek?: number } = {},
+  options: { drafted?: boolean; currentWeek?: number; myTeamName?: string } = {},
 ): LeagueState {
   const players = buildSamplePlayers();
   return {
     config: { ...DEFAULT_LEAGUE_CONFIG, id: 'sample', name: 'Sample League', season: 2026 },
-    teams: buildSampleTeams({ drafted: options.drafted }),
+    teams: buildSampleTeams({ drafted: options.drafted, myTeamName: options.myTeamName }),
     players,
     seasonProjections: buildSampleProjections(),
     weeklyProjections: [],

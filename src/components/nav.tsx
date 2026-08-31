@@ -17,12 +17,19 @@ const LINKS = [
   { href: '/espn', label: 'ESPN Connection', icon: '🔌' },
 ];
 
-export function Nav() {
+/**
+ * `hideEspnConnection` drops the ESPN setup link once the connection is configured — it
+ * is a one-time setup screen, not something to navigate to weekly. The page itself stays
+ * reachable at /espn, and the link comes back automatically if the connection breaks
+ * (expired cookies), which is exactly when it is needed again.
+ */
+export function Nav({ hideEspnConnection = false }: { hideEspnConnection?: boolean }) {
   const pathname = usePathname();
+  const links = hideEspnConnection ? LINKS.filter((link) => link.href !== '/espn') : LINKS;
 
   return (
     <nav aria-label="Main" className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
-      {LINKS.map((link) => {
+      {links.map((link) => {
         const active = link.href === '/' ? pathname === '/' : pathname.startsWith(link.href);
         return (
           <Link

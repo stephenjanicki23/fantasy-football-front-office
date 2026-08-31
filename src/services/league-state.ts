@@ -98,6 +98,17 @@ export async function loadLeagueState(
 
   const isSample = providers.mode === 'sample' || snapshot.source === 'synthetic-sample';
 
+  // Getting "my team" wrong is not cosmetic: every grade, need and recommendation would
+  // be computed for someone else's roster. Say so loudly rather than defaulting silently.
+  if (teams.length > 0 && !teams.some((team) => team.isMyTeam)) {
+    const configured = process.env.ESPN_TEAM_ID || process.env.ESPN_TEAM_NAME;
+    warnings.push(
+      configured
+        ? `No team matched ESPN_TEAM_ID/ESPN_TEAM_NAME ("${configured}"), so the app is showing ${teams[0]?.name ?? 'the first team'} instead. Teams in this league: ${teams.map((t) => t.name).join(', ')}.`
+        : `Neither ESPN_TEAM_ID nor ESPN_TEAM_NAME is set, so the app cannot tell which team is yours and is showing ${teams[0]?.name ?? 'the first team'}. Teams in this league: ${teams.map((t) => t.name).join(', ')}.`,
+    );
+  }
+
   return {
     state: {
       config,

@@ -27,6 +27,7 @@ import {
   mapTransactions,
   type EspnLeaguePayload,
   type EspnPlayer,
+  type MyTeamIdentity,
 } from './mappers';
 import {
   providerError,
@@ -51,18 +52,26 @@ const TTL_FREE_AGENTS = 60 * 1000;
 
 export interface EspnProviderOptions {
   credentials?: EspnCredentials | null;
-  /** ESPN team id (not our prefixed id) identifying which team is mine. */
-  myTeamExternalId?: string;
+  /** How to recognise my team: by ESPN team id, by team name, or both. */
+  myTeam?: MyTeamIdentity;
 }
 
 export class EspnProvider implements LeagueProvider {
   readonly name = 'espn';
   private readonly credentials: EspnCredentials | null;
-  private readonly myTeamExternalId?: string;
+  private readonly myTeam: MyTeamIdentity;
 
   constructor(options: EspnProviderOptions = {}) {
     this.credentials = options.credentials ?? credentialsFromEnv();
-    this.myTeamExternalId = options.myTeamExternalId ?? process.env.ESPN_TEAM_ID;
+    this.myTeam = options.myTeam ?? {
+      externalId: process.env.ESPN_TEAM_ID || undefined,
+      name: process.env.ESPN_TEAM_NAME || undefined,
+    };
+  }
+
+  /** True when the configuration says nothing about which team is mine. */
+  hasMyTeamIdentity(): boolean {
+    return Boolean(this.myTeam.externalId || this.myTeam.name);
   }
 
   isConfigured(): boolean {
@@ -105,7 +114,7 @@ export class EspnProvider implements LeagueProvider {
 
     const config = mapLeagueConfig(result.data);
     const teams = (result.data.teams ?? []).map((team) =>
-      mapTeam(team, config.faabBudget, this.myTeamExternalId),
+      mapTeam(team, config.faabBudget, this.myTeam),
     );
     return { ...result, data: teams };
   }
@@ -181,7 +190,7 @@ export class EspnProvider implements LeagueProvider {
     const payload = result.data;
     const config = mapLeagueConfig(payload);
     const teams = (payload.teams ?? []).map((team) =>
-      mapTeam(team, config.faabBudget, this.myTeamExternalId),
+      mapTeam(team, config.faabBudget, this.myTeam),
     );
 
     // Players on rosters come embedded in mRoster.

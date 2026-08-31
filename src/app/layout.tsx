@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Nav } from '@/components/nav';
+import { hasEspnPrivateCredentials, isEspnConfigured } from '@/lib/env';
 import { THEME_INIT_SCRIPT, ThemeToggle } from '@/components/theme-toggle';
 import './globals.css';
 
@@ -10,6 +11,10 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Read server-side and passed down: the nav is a client component and must never see
+  // credentials, only the boolean fact that setup is complete.
+  const espnReady = isEspnConfigured() && hasEspnPrivateCredentials();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -26,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
               <ThemeToggle />
             </div>
-            <Nav />
+            <Nav hideEspnConnection={espnReady} />
           </aside>
           <main className="min-w-0 flex-1 space-y-6">{children}</main>
         </div>

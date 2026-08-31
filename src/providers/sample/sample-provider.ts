@@ -38,14 +38,17 @@ export class SampleProvider
 {
   readonly name = SAMPLE_SOURCE;
 
-  constructor(private readonly options: { drafted?: boolean } = {}) {}
+  constructor(private readonly options: { drafted?: boolean; myTeamName?: string } = {}) {}
 
   isConfigured(): boolean {
     return true;
   }
 
   private state() {
-    return buildSampleLeagueState({ drafted: this.options.drafted });
+    return buildSampleLeagueState({
+      drafted: this.options.drafted,
+      myTeamName: this.options.myTeamName ?? process.env.ESPN_TEAM_NAME,
+    });
   }
 
   async getLeagueSettings(): Promise<ProviderResult<LeagueConfig>> {

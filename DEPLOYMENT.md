@@ -128,10 +128,12 @@ All server-side. None is exposed to the browser; there is no `NEXT_PUBLIC_*` sec
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `DASHBOARD_PASSWORD` | For any deploy with ESPN credentials | HTTP Basic password gate |
+
 | `ESPN_LEAGUE_ID` | For real data | Your league id |
 | `ESPN_SEASON` | For real data | e.g. `2026` |
 | `ESPN_S2`, `ESPN_SWID` | Private leagues | Session cookies — see ESPN_INTEGRATION.md |
-| `ESPN_TEAM_ID` | Optional | Which ESPN team is yours |
+| `ESPN_TEAM_ID` | One of these two | Which ESPN team is yours, from the `teamId` in the My Team URL |
+| `ESPN_TEAM_NAME` | One of these two | Your team name as ESPN shows it, matched case- and punctuation-insensitively |
 | `ANTHROPIC_API_KEY` | Optional | Narrative AI analysis; without it the deterministic engine analysis is used |
 | `ANTHROPIC_MODEL` | Optional | Defaults to `claude-sonnet-5` |
 | `LEAGUE_PROVIDER` | Optional | `espn` \| `manual` \| `sample`. Defaults to `espn` when a league id is present, else `sample` |

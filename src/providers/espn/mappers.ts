@@ -284,22 +284,55 @@ export function mapInjuryStatus(status: string | undefined): PlayerStatus {
   return ESPN_INJURY_STATUS[status.toUpperCase()] ?? 'ACTIVE';
 }
 
+/**
+ * How to recognise which team is mine.
+ *
+ * Either works, and name matching exists because the ESPN team id is buried in a URL
+ * while the team name is the thing an owner actually knows. Getting this wrong is not a
+ * cosmetic problem: every grade, need and recommendation would be computed for someone
+ * else's roster, so `matchedMyTeam` below lets callers detect a miss rather than
+ * silently analysing the wrong team.
+ */
+export interface MyTeamIdentity {
+  /** ESPN team id, from the `teamId` query parameter on the My Team page. */
+  externalId?: string;
+  /** Team name as it appears in ESPN. Compared case- and whitespace-insensitively. */
+  name?: string;
+}
+
+export function isMyTeamMatch(team: EspnTeamPayload, identity?: MyTeamIdentity): boolean {
+  if (!identity) return false;
+  if (identity.externalId && String(team.id) === identity.externalId.trim()) return true;
+  if (identity.name) {
+    const candidate = normaliseTeamName(espnTeamName(team));
+    if (candidate.length > 0 && candidate === normaliseTeamName(identity.name)) return true;
+  }
+  return false;
+}
+
+/** ESPN sometimes carries `name`, sometimes `location` + `nickname`. */
+export function espnTeamName(team: EspnTeamPayload): string {
+  const combined = [team.location, team.nickname].filter(Boolean).join(' ').trim();
+  return team.name ?? (combined.length > 0 ? combined : `Team ${team.id}`);
+}
+
+function normaliseTeamName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 export function mapTeam(
   team: EspnTeamPayload,
   faabBudget: number,
-  myTeamExternalId?: string,
+  identity?: MyTeamIdentity,
 ): FantasyTeam {
   const record = team.record?.overall;
   const spent = team.transactionCounter?.acquisitionBudgetSpent ?? 0;
 
   return {
     id: `espn-team-${team.id}`,
-    name:
-      team.name ??
-      [team.location, team.nickname].filter(Boolean).join(' ') ??
-      `Team ${team.id}`,
+    name: espnTeamName(team),
     ownerName: team.owners?.[0],
-    isMyTeam: myTeamExternalId !== undefined && String(team.id) === myTeamExternalId,
+    isMyTeam: isMyTeamMatch(team, identity),
     roster: (team.roster?.entries ?? []).map(mapRosterEntry),
     faabRemaining: Math.max(0, faabBudget - spent),
     wins: record?.wins ?? 0,

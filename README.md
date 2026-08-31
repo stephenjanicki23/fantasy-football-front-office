@@ -114,6 +114,7 @@ All server-side; nothing is exposed to the browser. See `.env.example`.
 | `ANTHROPIC_API_KEY` | Optional. Without it the deterministic engine analysis is used |
 | `ESPN_LEAGUE_ID`, `ESPN_SEASON` | Your league |
 | `ESPN_S2`, `ESPN_SWID` | Private leagues only — see ESPN_INTEGRATION.md |
+| `ESPN_TEAM_ID` or `ESPN_TEAM_NAME` | Which team is yours. Set one, or the app analyses the wrong roster |
 | `LEAGUE_PROVIDER` | `espn` \| `manual` \| `sample` |
 
 The ESPN client is a `server-only` module, so importing it into a client component is a
