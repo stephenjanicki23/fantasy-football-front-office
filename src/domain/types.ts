@@ -168,6 +168,9 @@ export interface InjuryReport {
  * The single input to every engine. Assembled once per request by
  * `src/services/league-state.ts`.
  */
+// Imported lazily by type only; the ranking model lives in expert-rankings.ts.
+import type { ExpertRankingSet } from './expert-rankings';
+
 export interface LeagueState {
   config: LeagueConfig;
   teams: FantasyTeam[];
@@ -179,6 +182,8 @@ export interface LeagueState {
   injuries: InjuryReport[];
   adp: AdpEntry[];
   matchups: Matchup[];
+  /** Expert tier rankings, if any are bundled or imported. Opinion, not projection. */
+  expertRankings?: ExpertRankingSet;
   draft?: DraftState;
   /** Ids of players on no roster. Derived, but cached here for engine convenience. */
   currentWeek?: number;

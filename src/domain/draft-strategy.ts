@@ -3,6 +3,7 @@ import { isTwoQbLeague, startersPerTeam } from './league-config';
 import { round2 } from './scoring';
 import { replacementRank } from './replacement';
 import type { AdpEntry, LeagueConfig, Position } from './types';
+import type { ExpertRankedPlayer } from './expert-rankings';
 import type { ValuedPlayer } from './valuation';
 
 /**
@@ -647,4 +648,116 @@ function clamp01(n: number): number {
 
 function clampInt(n: number, min: number, max: number): number {
   return Math.round(Math.min(Math.max(n, min), Math.max(min, max)));
+}
+
+// ---------------------------------------------------------------------------
+// Expert tier objectives
+// ---------------------------------------------------------------------------
+
+export interface TierWindowObjective {
+  position: Position;
+  /** How many starters this league requires at the position. */
+  needed: number;
+  owned: number;
+  /** The tier by which the ranker says you should have them. */
+  throughTier: number;
+  /** Ranked players at or above that tier still on the board. */
+  remainingInWindow: number;
+  status: 'NO_DATA' | 'DONE' | 'ON_TRACK' | 'TIGHT' | 'MISSED';
+  message: string;
+  explain: Explained<string>;
+}
+
+/**
+ * Track a "have N of this position by the end of tier T" objective.
+ *
+ * This is the shape of the most actionable advice a tiers piece gives: not a ranking but
+ * a deadline. In a two-QB league the ranker's version is to come away with two QBs by the
+ * end of his Tier 3, while still taking elite players at other positions — so what
+ * matters during the draft is how many qualifying arms are left, not merely how many QBs
+ * exist.
+ *
+ * Supply is counted against the whole league's remaining demand, because a window closes
+ * when rivals take the players, not when you do.
+ */
+export function tierWindowObjective(
+  config: LeagueConfig,
+  position: Position,
+  throughTier: number,
+  input: {
+    /** Expert rankings for players still available, keyed by player id. */
+    availableRankings: ExpertRankedPlayer[];
+    /** Expert rankings for players already on my roster. */
+    myRankings: ExpertRankedPlayer[];
+    /** How many teams still need one, for supply pressure. */
+    teamsStillNeeding: number;
+    /** Ranked players at this position matched to the pool at all, drafted or not. */
+    matchedAtPosition: number;
+  },
+): TierWindowObjective {
+  const needed = (config.lineup[position as keyof typeof config.lineup] ?? 0) as number;
+  const owned = input.myRankings.filter(
+    (ranking) => ranking.position === position && ranking.tier <= throughTier,
+  ).length;
+  const remainingInWindow = input.availableRankings.filter(
+    (ranking) => ranking.position === position && ranking.tier <= throughTier,
+  ).length;
+
+  const shortfall = Math.max(0, needed - owned);
+
+  let status: TierWindowObjective['status'];
+  let message: string;
+
+  /**
+   * "No rankings matched" is not "the window closed".
+   *
+   * Without this the objective reports MISSED whenever the ranking set cannot be matched
+   * to the pool — placeholder sample names, a position the ranker has not published yet —
+   * which reads as an urgent roster problem when it is in fact an absence of data.
+   */
+  if (input.matchedAtPosition === 0) {
+    status = 'NO_DATA';
+    message = `No ${position} rankings could be matched to your player pool, so this objective cannot be tracked. It is not a roster problem.`;
+  } else if (shortfall === 0) {
+    status = 'DONE';
+    message = `You have ${owned} ${position}${owned === 1 ? '' : 's'} inside tier ${throughTier} — objective met.`;
+  } else if (remainingInWindow === 0) {
+    status = 'MISSED';
+    message = `No tier ${throughTier}-or-better ${position}s remain, and you are ${shortfall} short. Reset expectations at the position rather than reaching for the next tier at a tier-${throughTier} price.`;
+  } else if (remainingInWindow <= shortfall) {
+    status = 'MISSED';
+    message = `Only ${remainingInWindow} tier ${throughTier}-or-better ${position}${remainingInWindow === 1 ? '' : 's'} left and you need ${shortfall}. With ${input.teamsStillNeeding} rivals also short, expect to miss the window.`;
+  } else if (remainingInWindow <= shortfall + input.teamsStillNeeding) {
+    status = 'TIGHT';
+    message = `${remainingInWindow} tier ${throughTier}-or-better ${position}s left, you need ${shortfall}, and ${input.teamsStillNeeding} rivals are also short. The window is closing — take one before it does.`;
+  } else {
+    status = 'ON_TRACK';
+    message = `${remainingInWindow} tier ${throughTier}-or-better ${position}s remain for the ${shortfall} you still need. No need to reach yet.`;
+  }
+
+  return {
+    position,
+    needed,
+    owned,
+    throughTier,
+    remainingInWindow,
+    status,
+    message,
+    explain: explained(
+      status,
+      {
+        position,
+        needed,
+        owned,
+        shortfall,
+        throughTier,
+        remainingInWindow,
+        teamsStillNeeding: input.teamsStillNeeding,
+        matchedAtPosition: input.matchedAtPosition,
+      },
+      `Objective: ${needed} ${position}s by the end of tier ${throughTier}. Hold ${owned}, need ${shortfall} more, ` +
+        `${remainingInWindow} qualifying players left, ${input.teamsStillNeeding} rivals also short.`,
+      ['expert-rankings', 'rosters', 'league-config'],
+    ),
+  };
 }

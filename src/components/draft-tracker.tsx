@@ -50,7 +50,29 @@ interface Candidate {
   tierCliff: number;
   upside: number;
   upsideExplain: string;
+  expert: {
+    tier: number;
+    rank: number;
+    designation: 'TARGET' | 'FADE' | null;
+    note: string | null;
+    disagreement: number;
+  } | null;
   explain: string;
+}
+
+interface ExpertPanel {
+  source: string | null;
+  guidance: string[];
+  unmatched: string[];
+  objectives: Array<{
+    position: string;
+    needed: number;
+    owned: number;
+    throughTier: number;
+    remainingInWindow: number;
+    status: 'NO_DATA' | 'DONE' | 'ON_TRACK' | 'TIGHT' | 'MISSED';
+    message: string;
+  }>;
 }
 
 interface StrategyPanel {
@@ -116,6 +138,7 @@ interface DraftResponse {
   }>;
   strategy: StrategyPanel | null;
   quarters: Quarters;
+  expert: ExpertPanel;
   myNeeds: {
     needOrder: string[];
     needByPosition: Record<string, number>;
@@ -131,7 +154,7 @@ interface DraftResponse {
   }>;
 }
 
-type SortKey = 'draftScore' | 'upside' | 'projectedPoints' | 'leagueValue' | 'name' | 'position';
+type SortKey = 'draftScore' | 'upside' | 'expertRank' | 'projectedPoints' | 'leagueValue' | 'name' | 'position';
 
 const POSITIONS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DST'] as const;
 
@@ -220,6 +243,14 @@ export function DraftTracker({
     return map;
   }, [analysis]);
 
+  const expertById = useMemo(() => {
+    const map = new Map<string, NonNullable<Candidate['expert']>>();
+    for (const candidate of analysis?.candidates ?? []) {
+      if (candidate.expert) map.set(candidate.id, candidate.expert);
+    }
+    return map;
+  }, [analysis]);
+
   const upsideById = useMemo(() => {
     const map = new Map<string, number>();
     for (const candidate of analysis?.candidates ?? []) map.set(candidate.id, Math.round(candidate.upside));
@@ -251,6 +282,14 @@ export function DraftTracker({
           if (ub !== undefined) return 1;
           return b.leagueValue - a.leagueValue;
         }
+        case 'expertRank': {
+          const ea = expertById.get(a.id)?.rank;
+          const eb = expertById.get(b.id)?.rank;
+          if (ea !== undefined && eb !== undefined) return ea - eb;
+          if (ea !== undefined) return -1;
+          if (eb !== undefined) return 1;
+          return b.leagueValue - a.leagueValue;
+        }
         case 'projectedPoints':
           return b.projectedPoints - a.projectedPoints;
         case 'leagueValue':
@@ -269,7 +308,7 @@ export function DraftTracker({
     });
 
     return sorted.slice(0, 150);
-  }, [pool, query, position, sortKey, scoreById, upsideById]);
+  }, [pool, query, position, sortKey, scoreById, upsideById, expertById]);
 
   const totalPicks = teamCount * draftRounds;
   const onClock = analysis?.onTheClock;
@@ -466,6 +505,57 @@ export function DraftTracker({
         </div>
       )}
 
+      {/* Expert tiers */}
+      {analysis?.expert?.source && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold tracking-wide uppercase">Expert tiers</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {analysis.expert.source} · opinion, shown alongside the projections rather
+              than replacing them
+            </p>
+          </div>
+
+          {analysis.expert.objectives.map((objective) => (
+            <p
+              key={objective.position}
+              className={`mt-3 rounded-lg px-3 py-2 text-sm ${
+                objective.status === 'NO_DATA'
+                  ? 'bg-slate-50 text-slate-600 dark:bg-slate-950/60 dark:text-slate-400'
+                  : objective.status === 'MISSED'
+                    ? 'bg-rose-50 text-rose-900 dark:bg-rose-950/40 dark:text-rose-200'
+                    : objective.status === 'TIGHT'
+                      ? 'bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200'
+                      : objective.status === 'DONE'
+                        ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200'
+                        : 'bg-slate-50 text-slate-700 dark:bg-slate-950/60 dark:text-slate-300'
+              }`}
+            >
+              <strong>
+                {objective.needed} {objective.position} by end of tier {objective.throughTier}:
+              </strong>{' '}
+              {objective.message}
+            </p>
+          ))}
+
+          {analysis.expert.guidance.length > 0 && (
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+              {analysis.expert.guidance.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          )}
+
+          {analysis.expert.unmatched.length > 0 && (
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              Not matched to your player pool ({analysis.expert.unmatched.length}):{' '}
+              {analysis.expert.unmatched.join(', ')}. These are ranked but could not be
+              found by name, so no tier is shown for them.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Player board */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
@@ -505,6 +595,7 @@ export function DraftTracker({
             >
               <option value="draftScore">Draft score</option>
               <option value="upside">Upside (Q1 ceiling at this price)</option>
+              <option value="expertRank">Expert tier / rank</option>
               <option value="leagueValue">League value</option>
               <option value="projectedPoints">Projected points</option>
               <option value="position">Position</option>
@@ -523,6 +614,7 @@ export function DraftTracker({
                 <th className="tabular py-2 pr-2 text-right">Value</th>
                 <th className="tabular py-2 pr-2 text-right">Score</th>
                 <th className="tabular py-2 pr-2 text-right">Upside</th>
+                <th className="py-2 pr-2 text-right">Expert</th>
                 <th className="tabular py-2 pr-2 text-right">Tier</th>
                 <th className="py-2 pr-4 text-right">Draft</th>
               </tr>
@@ -530,7 +622,7 @@ export function DraftTracker({
             <tbody>
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
                     {query ? `No available player matches “${query}”.` : 'No players available.'}
                   </td>
                 </tr>
@@ -572,6 +664,30 @@ export function DraftTracker({
                     </td>
                     <td className="tabular py-2 pr-2 text-right">
                       {upsideById.get(player.id) ?? '—'}
+                    </td>
+                    <td className="py-2 pr-2 text-right whitespace-nowrap">
+                      {(() => {
+                        const expert = expertById.get(player.id);
+                        if (!expert) return <span className="text-slate-400">—</span>;
+                        return (
+                          <span title={expert.note ?? undefined}>
+                            <span className="tabular">
+                              T{expert.tier} · {player.position}
+                              {expert.rank}
+                            </span>
+                            {expert.designation === 'FADE' && (
+                              <span className="ml-1 rounded bg-rose-500/15 px-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
+                                FADE
+                              </span>
+                            )}
+                            {expert.designation === 'TARGET' && (
+                              <span className="ml-1 rounded bg-emerald-500/15 px-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                                TARGET
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="tabular py-2 pr-2 text-right">{player.tier ?? '—'}</td>
                     <td className="py-2 pr-4 text-right">

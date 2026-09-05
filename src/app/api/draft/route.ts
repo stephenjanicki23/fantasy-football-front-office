@@ -210,6 +210,20 @@ export async function POST(request: Request) {
       frameworkEquivalentRound: frameworkEquivalentRound(state.config, recommendation.round),
       frameworkTeamCount: 12,
     },
+    expert: {
+      source: recommendation.expertSource,
+      guidance: recommendation.expertGuidance,
+      unmatched: recommendation.expertUnmatched,
+      objectives: recommendation.tierObjectives.map((objective) => ({
+        position: objective.position,
+        needed: objective.needed,
+        owned: objective.owned,
+        throughTier: objective.throughTier,
+        remainingInWindow: objective.remainingInWindow,
+        status: objective.status,
+        message: objective.message,
+      })),
+    },
     myNeeds: recommendation.myNeeds
       ? {
           needOrder: recommendation.myNeeds.needOrder,
@@ -257,6 +271,7 @@ function serialiseCandidate(candidate: ReturnType<typeof recommendDraftPick>['be
     tierCliff: candidate.tierCliff,
     upside: candidate.upside.score,
     upsideExplain: candidate.upside.explain.formula,
+    expert: candidate.expert,
     explain: candidate.explain.formula,
   };
 }

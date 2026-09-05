@@ -53,6 +53,12 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   an 8-team league takes more rounds to consume it, while Q2/Q3 track starting slots
   because positional supply scales with team count. Two starting QB slots stretch Q1 and
   move QB out of its usual Q3 window.
+- **Expert tiers** — a ranker's published tiers, attributed and dated, shown alongside
+  the projections rather than replacing them: tier, positional rank, FADE/TARGET labels,
+  and the ranker's format-specific guidance filtered to this league. His positional
+  deadlines are tracked live against remaining supply — "two QBs by the end of Tier 3"
+  reports whether the window is open, closing or gone. Rankings that cannot be matched to
+  the player pool are listed, never silently dropped.
 - **Live draft tracker** — enter each pick as it happens, with player search, position
   filter and sorting. ESPN's draft room has no usable feed (ESPN_INTEGRATION.md), so the
   board is entered manually and saved to the browser, surviving a mid-draft refresh.

@@ -1,5 +1,5 @@
 import { explained, type Explained } from './explain';
-import { picksForSlot, picksUntilNextTurn, pickCoordinates } from './league-config';
+import { isTwoQbLeague, picksForSlot, picksUntilNextTurn, pickCoordinates } from './league-config';
 import { marginalLineupGain, optimalLineup } from './lineup';
 import {
   predictNextPick,
@@ -19,12 +19,20 @@ import {
   quarterForRound,
   strategyStatus,
   positionSignificances,
+  tierWindowObjective,
   upsideFor,
   weightsForQuarter,
   type QuarterBoundaries,
   type StrategyStatus,
+  type TierWindowObjective,
   type UpsideScore,
 } from './draft-strategy';
+import {
+  guidanceForLeague,
+  matchExpertRankings,
+  rankingDisagreement,
+  type ExpertRankedPlayer,
+} from './expert-rankings';
 import type { FantasyTeam, LeagueConfig, LeagueState, Position } from './types';
 import { indexByPlayer, valuePlayers, type ValuedPlayer } from './valuation';
 
@@ -51,6 +59,12 @@ export interface DraftWeights {
   urgency: number; // 1 - expected availability
   opponentDemand: number;
 }
+
+/**
+ * The tier by which the supplied ranker says a superflex manager should hold both QBs.
+ * Named rather than inline so it moves with the ranking set instead of being buried.
+ */
+export const EXPERT_QB_TIER_DEADLINE = 3;
 
 export function weightsForRound(config: LeagueConfig, round: number): DraftWeights {
   const progress = clamp(round / Math.max(1, config.draftRounds), 0, 1);
@@ -83,6 +97,15 @@ export interface DraftCandidate {
   marginalStarterGain: number;
   /** How close to elite production, and how far the market is discounting him. */
   upside: UpsideScore;
+  /** A ranker's view, where one has been supplied. Opinion, kept separate from the maths. */
+  expert: {
+    tier: number;
+    rank: number;
+    designation: 'TARGET' | 'FADE' | null;
+    note: string | null;
+    /** Positive when this league's valuation likes him more than the ranker does. */
+    disagreement: number;
+  } | null;
   explain: Explained<number>;
 }
 
@@ -111,6 +134,13 @@ export interface DraftRecommendation {
   /** Where this pick sits in the draft-quarters framework. */
   quarters: QuarterBoundaries;
   strategy: StrategyStatus | null;
+  /** Format-relevant guidance from the supplied ranking set. */
+  expertGuidance: string[];
+  /** Ranker's positional deadlines, e.g. two QBs by the end of tier 3. */
+  tierObjectives: TierWindowObjective[];
+  expertSource: string | null;
+  /** Ranked players that could not be matched to the pool — reported, never hidden. */
+  expertUnmatched: string[];
 }
 
 export interface DraftEngineOptions {
@@ -208,6 +238,12 @@ export function recommendDraftPick(
     poolByPosition.set(candidate.player.position, list);
   }
   const significanceByPosition = positionSignificances(config, fullValuation.players);
+
+  // Expert rankings are opinion: matched by name, reported when unmatched, and never
+  // allowed to overwrite the league-derived valuation.
+  const rankingMatch = state.expertRankings
+    ? matchExpertRankings(players, state.expertRankings)
+    : null;
   const maxMarginalGain = Math.max(
     1,
     ...available.slice(0, 60).map((p) =>
@@ -274,6 +310,7 @@ export function recommendDraftPick(
       tierCliff: round2(tierCliff(tiers, player)),
       marginalStarterGain: marginal,
       upside,
+      expert: expertFor(rankingMatch?.byPlayerId.get(player.player.id), player),
       explain: explained(
         draftScore,
         {
@@ -325,6 +362,41 @@ export function recommendDraftPick(
       })
     : null;
 
+  /**
+   * The ranker's positional deadlines.
+   *
+   * The most actionable thing a tiers piece gives is not a ranking but a deadline — in a
+   * two-QB league, two QBs by the end of his tier 3. Tracked against the supply actually
+   * left, since a window closes when rivals take the players.
+   */
+  const tierObjectives: TierWindowObjective[] = [];
+  if (rankingMatch && myTeam) {
+    const availableRankings: ExpertRankedPlayer[] = available
+      .map((candidate) => rankingMatch.byPlayerId.get(candidate.player.id))
+      .filter((r): r is ExpertRankedPlayer => Boolean(r));
+    const myRankings: ExpertRankedPlayer[] = myTeam.roster
+      .map((entry) => rankingMatch.byPlayerId.get(entry.playerId))
+      .filter((r): r is ExpertRankedPlayer => Boolean(r));
+
+    if (isTwoQbLeague(config)) {
+      const teamsShort = teams.filter(
+        (team) =>
+          team.roster.filter((entry) => rosterPositions.get(entry.playerId) === 'QB').length <
+          config.lineup.QB,
+      ).length;
+      tierObjectives.push(
+        tierWindowObjective(config, 'QB', EXPERT_QB_TIER_DEADLINE, {
+          availableRankings,
+          myRankings,
+          teamsStillNeeding: teamsShort,
+          matchedAtPosition: [...rankingMatch.byPlayerId.values()].filter(
+            (ranking) => ranking.position === 'QB',
+          ).length,
+        }),
+      );
+    }
+  }
+
   const reasoning = buildReasoning(
     config,
     bestPick,
@@ -358,6 +430,12 @@ export function recommendDraftPick(
     reasoning,
     quarters,
     strategy,
+    expertGuidance: state.expertRankings
+      ? guidanceForLeague(state.expertRankings, config)
+      : [],
+    tierObjectives,
+    expertSource: state.expertRankings?.source ?? null,
+    expertUnmatched: rankingMatch?.unmatched.map((r) => r.name) ?? [],
   };
 }
 
@@ -485,4 +563,19 @@ function clamp(n: number, min: number, max: number): number {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+/** Attach a ranker's view to a candidate, or null when he did not rank the player. */
+function expertFor(
+  ranking: ExpertRankedPlayer | undefined,
+  player: ValuedPlayer,
+): DraftCandidate['expert'] {
+  if (!ranking) return null;
+  return {
+    tier: ranking.tier,
+    rank: ranking.rank,
+    designation: ranking.designation ?? null,
+    note: ranking.note ?? null,
+    disagreement: rankingDisagreement(player, ranking),
+  };
 }
