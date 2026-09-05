@@ -45,6 +45,14 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   replacement level is QB17-ish rather than QB9 — every downstream number inherits that.
 - Opponent next-pick prediction, pick-squeeze detection, dynamic tiers, ADP vs. this
   league's value (values and reaches).
+- **Draft-quarters strategy** — the draft is four phases with different jobs, and the
+  recommendation engine is weighted differently in each: raw value in Q1, upside in Q2
+  (the last window for league-winning production), roster fit and scarcity in Q3 as
+  positions dry up, ceiling in Q4. Boundaries are scaled for this league rather than
+  copied: Q1 is measured in *picks* because the elite pool is a fixed set of players, so
+  an 8-team league takes more rounds to consume it, while Q2/Q3 track starting slots
+  because positional supply scales with team count. Two starting QB slots stretch Q1 and
+  move QB out of its usual Q3 window.
 - **Live draft tracker** — enter each pick as it happens, with player search, position
   filter and sorting. ESPN's draft room has no usable feed (ESPN_INTEGRATION.md), so the
   board is entered manually and saved to the browser, surviving a mid-draft refresh.

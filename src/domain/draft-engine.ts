@@ -13,6 +13,18 @@ import { round2 } from './scoring';
 import { detectSqueezes, type SqueezeAlert } from './squeeze';
 import { buildTiers, tierCliff, tierRemaining, type Tier } from './tiers';
 import { computeTeamNeeds, type TeamNeedsReport } from './team-needs';
+import {
+  dryingUpPositions,
+  quarterBoundaries,
+  quarterForRound,
+  strategyStatus,
+  positionSignificances,
+  upsideFor,
+  weightsForQuarter,
+  type QuarterBoundaries,
+  type StrategyStatus,
+  type UpsideScore,
+} from './draft-strategy';
 import type { FantasyTeam, LeagueConfig, LeagueState, Position } from './types';
 import { indexByPlayer, valuePlayers, type ValuedPlayer } from './valuation';
 
@@ -69,6 +81,8 @@ export interface DraftCandidate {
   tierRemaining: number;
   tierCliff: number;
   marginalStarterGain: number;
+  /** How close to elite production, and how far the market is discounting him. */
+  upside: UpsideScore;
   explain: Explained<number>;
 }
 
@@ -94,6 +108,9 @@ export interface DraftRecommendation {
   playersMissingProjections: number;
   confidence: number;
   reasoning: string[];
+  /** Where this pick sits in the draft-quarters framework. */
+  quarters: QuarterBoundaries;
+  strategy: StrategyStatus | null;
 }
 
 export interface DraftEngineOptions {
@@ -175,8 +192,22 @@ export function recommendDraftPick(
     ? detectSqueezes(config, predictions, tiers, available, myNeeds.needOrder.slice(0, 4))
     : [];
 
-  // Score every available player.
-  const weights = weightsForRound(config, round);
+  // Score every available player, weighted for the phase of the draft we are in rather
+  // than by a smooth ramp: the quarters do different jobs and reward different things.
+  const quarters = quarterBoundaries(config, fullValuation.players);
+  const quarter = quarterForRound(quarters, round);
+  const weights = weightsForQuarter(quarter);
+
+  const adpByPlayer = new Map(state.adp.map((entry) => [entry.playerId, entry]));
+  // Full preseason pool per position — the upside model needs a stable elite reference,
+  // not the shrinking available pool (see upsideFor).
+  const poolByPosition = new Map<Position, ValuedPlayer[]>();
+  for (const candidate of fullValuation.players) {
+    const list = poolByPosition.get(candidate.player.position) ?? [];
+    list.push(candidate);
+    poolByPosition.set(candidate.player.position, list);
+  }
+  const significanceByPosition = positionSignificances(config, fullValuation.players);
   const maxMarginalGain = Math.max(
     1,
     ...available.slice(0, 60).map((p) =>
@@ -213,12 +244,21 @@ export function recommendDraftPick(
 
     const urgency = (1 - availability) * 100;
 
+    const upside = upsideFor(
+      player,
+      poolByPosition.get(player.player.position) ?? [player],
+      config,
+      adpByPlayer,
+      { positionSignificance: significanceByPosition.get(player.player.position) },
+    );
+
     const draftScore = round2(
       weights.value * player.leagueValue +
         weights.scarcity * scarcityScore +
         weights.rosterFit * rosterFit +
         weights.urgency * urgency +
-        weights.opponentDemand * demand,
+        weights.opponentDemand * demand +
+        weights.upside * upside.score,
     );
 
     return {
@@ -233,6 +273,7 @@ export function recommendDraftPick(
       tierRemaining: tierRemaining(tiers, player),
       tierCliff: round2(tierCliff(tiers, player)),
       marginalStarterGain: marginal,
+      upside,
       explain: explained(
         draftScore,
         {
@@ -242,11 +283,13 @@ export function recommendDraftPick(
           expectedAvailability: availability,
           opponentDemand: demand,
           marginalStarterGain: marginal,
+          upside: upside.score,
           round,
+          quarter,
         },
-        `draftScore = ${weights.value}×value(${player.leagueValue}) + ${weights.scarcity}×scarcity(${scarcityScore}) + ` +
+        `Q${quarter} weights — draftScore = ${weights.value}×value(${player.leagueValue}) + ${weights.scarcity}×scarcity(${scarcityScore}) + ` +
           `${weights.rosterFit}×fit(${rosterFit}) + ${weights.urgency}×urgency(${round2(urgency)}) + ` +
-          `${weights.opponentDemand}×demand(${demand}) = ${draftScore}`,
+          `${weights.opponentDemand}×demand(${demand}) + ${weights.upside}×upside(${upside.score}) = ${draftScore}`,
         ['projections', 'rosters', 'opponent-model', 'league-config'],
       ),
     };
@@ -269,6 +312,19 @@ export function recommendDraftPick(
     [...top].sort((a, b) => b.value * b.expectedAvailability - a.value * a.expectedAvailability)[0] ??
     null;
 
+  // Where this pick sits in the framework, and what the phase is asking of us.
+  const strategy = myTeam
+    ? strategyStatus(config, quarters, round, {
+        myRemainingPicks: myPicks.filter((pick) => pick >= overall),
+        myRosterValues: myTeam.roster
+          .map((entry) => valuesById.get(entry.playerId))
+          .filter((v): v is ValuedPlayer => Boolean(v)),
+        unfilledSlots: myNeeds?.unfilledSlots ?? [],
+        dryingUpPositions: dryingUpPositions(config, available),
+        board: fullValuation.players,
+      })
+    : null;
+
   const reasoning = buildReasoning(
     config,
     bestPick,
@@ -276,6 +332,7 @@ export function recommendDraftPick(
     qbScarcity,
     squeezes,
     untilNext,
+    strategy,
   );
 
   return {
@@ -299,6 +356,8 @@ export function recommendDraftPick(
     playersMissingProjections: availableValuation.missingProjections.length,
     confidence: computeConfidence(candidates, availableValuation.missingProjections.length, players.length),
     reasoning,
+    quarters,
+    strategy,
   };
 }
 
@@ -329,11 +388,26 @@ function buildReasoning(
   qb: QbScarcityReport,
   squeezes: SqueezeAlert[],
   untilNext: number | null,
+  strategy: StrategyStatus | null,
 ): string[] {
   if (!best) return ['No available players with projections — connect a projection source.'];
 
   const reasons: string[] = [];
   const position = best.player.player.position;
+
+  // Lead with the phase: it explains why this pick is weighted the way it is.
+  if (strategy) {
+    reasons.push(`${strategy.plan.label} (Q${strategy.currentQuarter}): ${strategy.plan.objective}`);
+    if (strategy.congestionWarning) reasons.push(strategy.congestionWarning);
+    if (strategy.currentQuarter === 2 && best.upside.score >= 60) {
+      reasons.push(
+        `Q2 is the last window for league-winning production, and he scores ${Math.round(best.upside.score)}/100 on upside.`,
+      );
+    }
+    if (strategy.currentQuarter === 4 && best.upside.score >= 50) {
+      reasons.push(`Late-round ceiling swing — upside ${Math.round(best.upside.score)}/100.`);
+    }
+  }
 
   if (myNeeds && myNeeds.needOrder[0] === position) {
     reasons.push(

@@ -48,7 +48,36 @@ interface Candidate {
   tier: number | null;
   tierRemaining: number;
   tierCliff: number;
+  upside: number;
+  upsideExplain: string;
   explain: string;
+}
+
+interface StrategyPanel {
+  quarter: 1 | 2 | 3 | 4;
+  label: string;
+  objective: string;
+  guidance: string[];
+  firstRound: number;
+  lastRound: number;
+  picksLeftInQuarter: number;
+  q1ProducersOwned: number;
+  q1ProducerTarget: number;
+  openObjectives: string[];
+  congestionWarning: string | null;
+  notes: string[];
+  explain: string;
+}
+
+interface Quarters {
+  q1End: number;
+  q2End: number;
+  q3End: number;
+  totalRounds: number;
+  plans: Array<{ quarter: number; label: string; firstRound: number; lastRound: number }>;
+  explain: string;
+  frameworkEquivalentRound: number;
+  frameworkTeamCount: number;
 }
 
 interface DraftResponse {
@@ -85,6 +114,8 @@ interface DraftResponse {
     tierSurvivalProbability: number;
     summary: string;
   }>;
+  strategy: StrategyPanel | null;
+  quarters: Quarters;
   myNeeds: {
     needOrder: string[];
     needByPosition: Record<string, number>;
@@ -100,7 +131,7 @@ interface DraftResponse {
   }>;
 }
 
-type SortKey = 'draftScore' | 'projectedPoints' | 'leagueValue' | 'name' | 'position';
+type SortKey = 'draftScore' | 'upside' | 'projectedPoints' | 'leagueValue' | 'name' | 'position';
 
 const POSITIONS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DST'] as const;
 
@@ -189,6 +220,12 @@ export function DraftTracker({
     return map;
   }, [analysis]);
 
+  const upsideById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const candidate of analysis?.candidates ?? []) map.set(candidate.id, Math.round(candidate.upside));
+    return map;
+  }, [analysis]);
+
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const filtered = pool.filter((player) => {
@@ -206,6 +243,14 @@ export function DraftTracker({
           return a.name.localeCompare(b.name);
         case 'position':
           return a.position.localeCompare(b.position) || b.projectedPoints - a.projectedPoints;
+        case 'upside': {
+          const ua = upsideById.get(a.id);
+          const ub = upsideById.get(b.id);
+          if (ua !== undefined && ub !== undefined) return ub - ua;
+          if (ua !== undefined) return -1;
+          if (ub !== undefined) return 1;
+          return b.leagueValue - a.leagueValue;
+        }
         case 'projectedPoints':
           return b.projectedPoints - a.projectedPoints;
         case 'leagueValue':
@@ -224,7 +269,7 @@ export function DraftTracker({
     });
 
     return sorted.slice(0, 150);
-  }, [pool, query, position, sortKey, scoreById]);
+  }, [pool, query, position, sortKey, scoreById, upsideById]);
 
   const totalPicks = teamCount * draftRounds;
   const onClock = analysis?.onTheClock;
@@ -348,6 +393,79 @@ export function DraftTracker({
         )}
       </div>
 
+      {/* Draft-quarters strategy */}
+      {analysis?.strategy && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold tracking-wide uppercase">
+                Q{analysis.strategy.quarter} · {analysis.strategy.label}
+              </h2>
+              <p className="mt-1 text-sm font-medium">{analysis.strategy.objective}</p>
+            </div>
+            <div className="text-right text-xs text-slate-500 dark:text-slate-400">
+              <p>
+                Rounds {analysis.strategy.firstRound}–{analysis.strategy.lastRound} ·{' '}
+                {analysis.strategy.picksLeftInQuarter} of your picks left in this phase
+              </p>
+              <p className="mt-0.5">
+                Elite producers: {analysis.strategy.q1ProducersOwned} of ~
+                {analysis.strategy.q1ProducerTarget}
+              </p>
+            </div>
+          </div>
+
+          {/* Phase strip */}
+          <ol className="mt-3 flex gap-1">
+            {analysis.quarters.plans.map((plan) => (
+              <li
+                key={plan.quarter}
+                title={`${plan.label}: rounds ${plan.firstRound}-${plan.lastRound}`}
+                className={`flex-1 rounded px-2 py-1 text-center text-xs font-medium ${
+                  plan.quarter === analysis.strategy!.quarter
+                    ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                }`}
+              >
+                Q{plan.quarter} · {plan.firstRound}–{plan.lastRound}
+              </li>
+            ))}
+          </ol>
+
+          {analysis.strategy.congestionWarning && (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              ⚠️ {analysis.strategy.congestionWarning}
+            </p>
+          )}
+
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+            {analysis.strategy.guidance.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+            {analysis.strategy.notes.map((line) => (
+              <li key={line} className="font-medium text-slate-800 dark:text-slate-100">
+                {line}
+              </li>
+            ))}
+          </ul>
+
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+            Your round {onClock?.round ?? 1} is round{' '}
+            <strong>{analysis.quarters.frameworkEquivalentRound}</strong> of a{' '}
+            {analysis.quarters.frameworkTeamCount}-team draft by players gone — this framework
+            is written for {analysis.quarters.frameworkTeamCount}-team leagues, so better
+            players are still on the board than its round numbers imply.
+          </p>
+
+          <details className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            <summary className="cursor-pointer select-none">How the phases were set</summary>
+            <p className="mt-2 rounded-lg bg-slate-50 p-3 leading-relaxed dark:bg-slate-950/60">
+              {analysis.quarters.explain}
+            </p>
+          </details>
+        </div>
+      )}
+
       {/* Player board */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
@@ -386,6 +504,7 @@ export function DraftTracker({
               className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
             >
               <option value="draftScore">Draft score</option>
+              <option value="upside">Upside (Q1 ceiling at this price)</option>
               <option value="leagueValue">League value</option>
               <option value="projectedPoints">Projected points</option>
               <option value="position">Position</option>
@@ -403,6 +522,7 @@ export function DraftTracker({
                 <th className="tabular py-2 pr-2 text-right">Proj</th>
                 <th className="tabular py-2 pr-2 text-right">Value</th>
                 <th className="tabular py-2 pr-2 text-right">Score</th>
+                <th className="tabular py-2 pr-2 text-right">Upside</th>
                 <th className="tabular py-2 pr-2 text-right">Tier</th>
                 <th className="py-2 pr-4 text-right">Draft</th>
               </tr>
@@ -410,7 +530,7 @@ export function DraftTracker({
             <tbody>
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
                     {query ? `No available player matches “${query}”.` : 'No players available.'}
                   </td>
                 </tr>
@@ -449,6 +569,9 @@ export function DraftTracker({
                     <td className="tabular py-2 pr-2 text-right">{player.leagueValue}</td>
                     <td className="tabular py-2 pr-2 text-right font-semibold">
                       {score === undefined ? '—' : score}
+                    </td>
+                    <td className="tabular py-2 pr-2 text-right">
+                      {upsideById.get(player.id) ?? '—'}
                     </td>
                     <td className="tabular py-2 pr-2 text-right">{player.tier ?? '—'}</td>
                     <td className="py-2 pr-4 text-right">

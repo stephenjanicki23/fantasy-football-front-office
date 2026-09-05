@@ -4,6 +4,7 @@ import { recommendDraftPick } from '@/domain/draft-engine';
 import { pickCoordinates } from '@/domain/league-config';
 import { teamOnClock } from '@/domain/opponent-model';
 import { valuePlayers } from '@/domain/valuation';
+import { frameworkEquivalentRound } from '@/domain/draft-strategy';
 import type { DraftPick, DraftState, LeagueState } from '@/domain/types';
 import { loadLeagueState } from '@/services/league-state';
 
@@ -181,6 +182,34 @@ export async function POST(request: Request) {
       tierSurvivalProbability: squeeze.tierSurvivalProbability,
       summary: squeeze.explain.formula,
     })),
+    strategy: recommendation.strategy
+      ? {
+          quarter: recommendation.strategy.currentQuarter,
+          label: recommendation.strategy.plan.label,
+          objective: recommendation.strategy.plan.objective,
+          guidance: recommendation.strategy.plan.guidance,
+          firstRound: recommendation.strategy.plan.firstRound,
+          lastRound: recommendation.strategy.plan.lastRound,
+          picksLeftInQuarter: recommendation.strategy.picksLeftInQuarter,
+          q1ProducersOwned: recommendation.strategy.q1ProducersOwned,
+          q1ProducerTarget: recommendation.strategy.q1ProducerTarget,
+          openObjectives: recommendation.strategy.openObjectives,
+          congestionWarning: recommendation.strategy.congestionWarning,
+          notes: recommendation.strategy.notes,
+          explain: recommendation.strategy.explain.formula,
+        }
+      : null,
+    quarters: {
+      q1End: recommendation.quarters.q1End,
+      q2End: recommendation.quarters.q2End,
+      q3End: recommendation.quarters.q3End,
+      totalRounds: recommendation.quarters.totalRounds,
+      plans: recommendation.quarters.plans,
+      explain: recommendation.quarters.explain.formula,
+      /** What this round would be in the 12-team league the framework assumes. */
+      frameworkEquivalentRound: frameworkEquivalentRound(state.config, recommendation.round),
+      frameworkTeamCount: 12,
+    },
     myNeeds: recommendation.myNeeds
       ? {
           needOrder: recommendation.myNeeds.needOrder,
@@ -226,6 +255,8 @@ function serialiseCandidate(candidate: ReturnType<typeof recommendDraftPick>['be
     tier: candidate.tier ?? null,
     tierRemaining: candidate.tierRemaining,
     tierCliff: candidate.tierCliff,
+    upside: candidate.upside.score,
+    upsideExplain: candidate.upside.explain.formula,
     explain: candidate.explain.formula,
   };
 }

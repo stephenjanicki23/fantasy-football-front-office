@@ -90,6 +90,7 @@ testable and the metrics traceable.
 │   │   ├── team-needs.ts       # per-team positional need inference
 │   │   ├── opponent-model.ts   # next-pick prediction, survival probability
 │   │   ├── draft-engine.ts     # dynamic draft value score, recommendations
+│   │   ├── draft-strategy.ts   # draft quarters, upside model, phase weighting
 │   │   ├── squeeze.ts          # pick-squeeze detection
 │   │   ├── adp.ts              # ADP vs league value (values / reaches)
 │   │   ├── lineup.ts           # optimal lineup solver
