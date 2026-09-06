@@ -1,5 +1,5 @@
 import { explained, type Explained } from './explain';
-import type { LeagueConfig, Player, Position } from './types';
+import type { LeagueConfig, Player, Position, ScoringRules } from './types';
 import type { ValuedPlayer } from './valuation';
 
 /**
@@ -24,7 +24,15 @@ export interface ExpertRankedPlayer {
   /** Rank within the position, 1-indexed. */
   rank: number;
   tier: number;
+  /** Sub-tier where the ranker used 1a/1b style mini-breaks. */
+  subTier?: string;
   designation?: Designation;
+  /**
+   * Whether the ranker labelled this player individually, or whether the label was read
+   * off a statement covering a range ("Fades on the expensive floor plays through to X").
+   * Inferred labels are shown as such rather than presented as his explicit call.
+   */
+  designationBasis?: 'stated' | 'inferred';
   /** Short paraphrase of the ranker's reasoning. */
   note?: string;
 }
@@ -43,8 +51,16 @@ export interface ExpertRankingSet {
   sourceUrl?: string;
   season: number;
   asOf: string;
-  /** Scoring assumptions the ranker was working under. */
+  /** Scoring assumptions the ranker was working under, in prose. */
   scoringNote?: string;
+  /**
+   * The scoring the rankings were actually built for, as rules.
+   *
+   * Needed to compare like with like: a full-PPR ranking read into a half-PPR league
+   * systematically overrates pass-catching backs, and the size of that error is
+   * computable from projections rather than guessed at.
+   */
+  sourceScoring?: Partial<ScoringRules>;
   /** Format-specific strategy notes, e.g. how to play the position in superflex. */
   guidance: string[];
   players: ExpertRankedPlayer[];

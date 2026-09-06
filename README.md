@@ -59,6 +59,11 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   deadlines are tracked live against remaining supply — "two QBs by the end of Tier 3"
   reports whether the window is open, closing or gone. Rankings that cannot be matched to
   the player pool are listed, never silently dropped.
+- **Scoring translation** — a ranking built for different scoring is translated rather
+  than trusted or hand-edited. The RB tiers are full PPR while this league is 0.5, so the
+  same projections are scored both ways and the ranked cohort re-ordered under each; the
+  difference isolates the format effect and is shown per player (▲/▼). Pass-catching
+  backs fall, rushing-heavy backs rise. The ranker's published ranks are never altered.
 - **Live draft tracker** — enter each pick as it happens, with player search, position
   filter and sorting. ESPN's draft room has no usable feed (ESPN_INTEGRATION.md), so the
   board is entered manually and saved to the browser, surviving a mid-draft refresh.

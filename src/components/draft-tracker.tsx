@@ -56,6 +56,8 @@ interface Candidate {
     designation: 'TARGET' | 'FADE' | null;
     note: string | null;
     disagreement: number;
+    formatShift: number | null;
+    formatShiftExplain: string | null;
   } | null;
   explain: string;
 }
@@ -64,6 +66,7 @@ interface ExpertPanel {
   source: string | null;
   guidance: string[];
   unmatched: string[];
+  formatSummaries: string[];
   objectives: Array<{
     position: string;
     needed: number;
@@ -538,6 +541,15 @@ export function DraftTracker({
             </p>
           ))}
 
+          {analysis.expert.formatSummaries.map((summary) => (
+            <p
+              key={summary}
+              className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-200"
+            >
+              <strong>Scoring translation:</strong> {summary}
+            </p>
+          ))}
+
           {analysis.expert.guidance.length > 0 && (
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
               {analysis.expert.guidance.map((line) => (
@@ -675,6 +687,19 @@ export function DraftTracker({
                               T{expert.tier} · {player.position}
                               {expert.rank}
                             </span>
+                            {expert.formatShift !== null && expert.formatShift !== 0 && (
+                              <span
+                                title={expert.formatShiftExplain ?? undefined}
+                                className={`ml-1 text-xs font-medium ${
+                                  expert.formatShift > 0
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : 'text-amber-600 dark:text-amber-400'
+                                }`}
+                              >
+                                {expert.formatShift > 0 ? '▲' : '▼'}
+                                {Math.abs(expert.formatShift)}
+                              </span>
+                            )}
                             {expert.designation === 'FADE' && (
                               <span className="ml-1 rounded bg-rose-500/15 px-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
                                 FADE

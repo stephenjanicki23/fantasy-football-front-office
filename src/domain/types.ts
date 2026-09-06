@@ -184,6 +184,8 @@ export interface LeagueState {
   matchups: Matchup[];
   /** Expert tier rankings, if any are bundled or imported. Opinion, not projection. */
   expertRankings?: ExpertRankingSet;
+  /** The sets unflattened, so each keeps the scoring it was built for. */
+  expertRankingSets?: ExpertRankingSet[];
   draft?: DraftState;
   /** Ids of players on no roster. Derived, but cached here for engine convenience. */
   currentWeek?: number;

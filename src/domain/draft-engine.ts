@@ -27,6 +27,7 @@ import {
   type TierWindowObjective,
   type UpsideScore,
 } from './draft-strategy';
+import { computeFormatAdjustment, type FormatShift } from './format-adjustment';
 import {
   guidanceForLeague,
   matchExpertRankings,
@@ -105,6 +106,9 @@ export interface DraftCandidate {
     note: string | null;
     /** Positive when this league's valuation likes him more than the ranker does. */
     disagreement: number;
+    /** How this league's scoring moves him relative to the others ranked, if at all. */
+    formatShift: number | null;
+    formatShiftExplain: string | null;
   } | null;
   explain: Explained<number>;
 }
@@ -139,6 +143,8 @@ export interface DraftRecommendation {
   /** Ranker's positional deadlines, e.g. two QBs by the end of tier 3. */
   tierObjectives: TierWindowObjective[];
   expertSource: string | null;
+  /** How the rankings' scoring differs from this league's, when it does. */
+  formatSummaries: string[];
   /** Ranked players that could not be matched to the pool — reported, never hidden. */
   expertUnmatched: string[];
 }
@@ -244,6 +250,29 @@ export function recommendDraftPick(
   const rankingMatch = state.expertRankings
     ? matchExpertRankings(players, state.expertRankings)
     : null;
+
+  /**
+   * Translate rankings built for other scoring.
+   *
+   * Done per set, because each carries its own assumptions — these QB tiers already match
+   * this league's passing scoring while the RB tiers were built for full PPR.
+   */
+  const formatShifts = new Map<string, FormatShift>();
+  const formatSummaries: string[] = [];
+  for (const set of state.expertRankingSets ?? []) {
+    const setMatch = matchExpertRankings(players, set);
+    const adjustment = computeFormatAdjustment(
+      config,
+      set.players,
+      setMatch.byPlayerId,
+      players,
+      seasonProjections,
+      set.sourceScoring,
+    );
+    if (!adjustment.applies) continue;
+    for (const [playerId, shift] of adjustment.shifts) formatShifts.set(playerId, shift);
+    formatSummaries.push(adjustment.summary);
+  }
   const maxMarginalGain = Math.max(
     1,
     ...available.slice(0, 60).map((p) =>
@@ -310,7 +339,11 @@ export function recommendDraftPick(
       tierCliff: round2(tierCliff(tiers, player)),
       marginalStarterGain: marginal,
       upside,
-      expert: expertFor(rankingMatch?.byPlayerId.get(player.player.id), player),
+      expert: expertFor(
+        rankingMatch?.byPlayerId.get(player.player.id),
+        player,
+        formatShifts.get(player.player.id),
+      ),
       explain: explained(
         draftScore,
         {
@@ -435,6 +468,7 @@ export function recommendDraftPick(
       : [],
     tierObjectives,
     expertSource: state.expertRankings?.source ?? null,
+    formatSummaries,
     expertUnmatched: rankingMatch?.unmatched.map((r) => r.name) ?? [],
   };
 }
@@ -569,6 +603,7 @@ function lerp(a: number, b: number, t: number): number {
 function expertFor(
   ranking: ExpertRankedPlayer | undefined,
   player: ValuedPlayer,
+  shift: FormatShift | undefined,
 ): DraftCandidate['expert'] {
   if (!ranking) return null;
   return {
@@ -577,5 +612,7 @@ function expertFor(
     designation: ranking.designation ?? null,
     note: ranking.note ?? null,
     disagreement: rankingDisagreement(player, ranking),
+    formatShift: shift?.shift ?? null,
+    formatShiftExplain: shift?.explain.formula ?? null,
   };
 }

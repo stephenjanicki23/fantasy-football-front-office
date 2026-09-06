@@ -92,6 +92,7 @@ testable and the metrics traceable.
 │   │   ├── draft-engine.ts     # dynamic draft value score, recommendations
 │   │   ├── draft-strategy.ts   # draft quarters, upside model, phase weighting
 │   │   ├── expert-rankings.ts  # third-party tiers: matching, guidance, provenance
+│   │   ├── format-adjustment.ts # translating rankings across scoring systems
 │   │   ├── squeeze.ts          # pick-squeeze detection
 │   │   ├── adp.ts              # ADP vs league value (values / reaches)
 │   │   ├── lineup.ts           # optimal lineup solver

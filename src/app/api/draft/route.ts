@@ -214,6 +214,7 @@ export async function POST(request: Request) {
       source: recommendation.expertSource,
       guidance: recommendation.expertGuidance,
       unmatched: recommendation.expertUnmatched,
+      formatSummaries: recommendation.formatSummaries,
       objectives: recommendation.tierObjectives.map((objective) => ({
         position: objective.position,
         needed: objective.needed,
