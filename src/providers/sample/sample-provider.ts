@@ -70,6 +70,7 @@ export class SampleProvider
         picks: [],
         currentOverall: 1,
         draftOrder: state.teams.map((t) => t.id),
+        draftOrderSource: 'FALLBACK' as const,
         complete: false,
       },
       SAMPLE_SOURCE,

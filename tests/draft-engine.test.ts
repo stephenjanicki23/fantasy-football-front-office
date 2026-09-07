@@ -31,6 +31,7 @@ function stateWithDraft(picksMade: number, myDraftSlot = 3): LeagueState {
     picks,
     currentOverall: picksMade + 1,
     draftOrder: order,
+    draftOrderSource: 'FALLBACK',
     complete: false,
   };
   for (const team of state.teams) team.isMyTeam = team.draftSlot === myDraftSlot;
@@ -219,7 +220,7 @@ function realNameState(): LeagueState {
   state.expertRankingSets = EXPERT_RANKING_SETS;
 
   for (const team of state.teams) team.roster = [];
-  state.draft = { picks: [], currentOverall: 1, draftOrder: state.teams.map((t) => t.id), complete: false };
+  state.draft = { picks: [], currentOverall: 1, draftOrder: state.teams.map((t) => t.id), draftOrderSource: 'FALLBACK', complete: false };
   return state;
 }
 

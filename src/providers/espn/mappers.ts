@@ -432,14 +432,36 @@ export function mapDraft(payload: EspnLeaguePayload, teamIds: string[]): DraftSt
     }))
     .sort((a, b) => a.overall - b.overall);
 
-  // Draft order comes from round 1's picks when available; fall back to team order.
+  /**
+   * Draft order, best source first.
+   *
+   * Round 1's actual picks are authoritative once a draft has started. Before that ESPN
+   * still publishes the order the league has set, as `settings.draftSettings.pickOrder` —
+   * which this used to ignore, silently falling back to the league's team order instead.
+   * That fallback is not the draft order in any league that has ever reordered its slots,
+   * and everything downstream (who is on the clock, which teams pick between your turns,
+   * every simulated pick) is built on it.
+   */
   const roundOne = picks.filter((p) => p.round === 1).sort((a, b) => a.pickInRound - b.pickInRound);
-  const draftOrder = roundOne.length > 0 ? roundOne.map((p) => p.teamId) : teamIds;
+  const settingsOrder = (payload.settings?.draftSettings?.pickOrder ?? [])
+    .map((espnTeamId) => `espn-team-${espnTeamId}`)
+    .filter((teamId) => teamIds.includes(teamId));
+
+  let draftOrder = teamIds;
+  let draftOrderSource: DraftState['draftOrderSource'] = 'FALLBACK';
+  if (roundOne.length > 0) {
+    draftOrder = roundOne.map((p) => p.teamId);
+    draftOrderSource = 'PICKS';
+  } else if (settingsOrder.length === teamIds.length) {
+    draftOrder = settingsOrder;
+    draftOrderSource = 'SETTINGS';
+  }
 
   return {
     picks,
     currentOverall: picks.length + 1,
     draftOrder,
+    draftOrderSource,
     complete: payload.draftDetail?.drafted ?? false,
   };
 }

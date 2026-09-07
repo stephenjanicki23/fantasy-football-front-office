@@ -60,7 +60,7 @@ describe('buildAnalysisInput', () => {
 
   it('switches to draft metrics for a draft task', () => {
     const drafting = buildSampleLeagueState();
-    drafting.draft = { picks: [], currentOverall: 1, draftOrder: drafting.teams.map((t) => t.id), complete: false };
+    drafting.draft = { picks: [], currentOverall: 1, draftOrder: drafting.teams.map((t) => t.id), draftOrderSource: 'FALLBACK', complete: false };
     const draftInput = buildAnalysisInput(drafting, { task: 'DRAFT_PICK' });
     expect(draftInput.computedMetrics).toHaveProperty('draft');
     expect(draftInput.computedMetrics).toHaveProperty('scarcity');

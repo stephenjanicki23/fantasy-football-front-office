@@ -77,6 +77,26 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   are still used: re-scoring a stat line under two rule sets is the whole method, so
   removing projections entirely would mean showing his full-PPR order with no 0.5-PPR
   correction at all. They are an input to adjusting *his* ranks, never a ranking of ours.
+- **Mock draft** — every team but yours picks itself, driven by the same engine that
+  advises you, running for that team: its roster, its needs, its turn. Deliberately not a
+  different and better rule than the one you are given, which would make your own board
+  look good for no reason. Each team takes from its own shortlist with a seeded bias
+  towards the top choice, so a run develops the way a real board does and the same seed
+  replays the same mock. Simulated picks land in the same list a manual pick does, so undo,
+  the pick log and the analysis do not care which kind they are — and there is no mode that
+  drafts for you: every run stops when you are on the clock. It is a sparring partner, not
+  a prediction of what your leaguemates will do.
+- **Draft order, and how much to trust it** — taken from round 1's actual picks when the
+  draft has started, otherwise from your league's ESPN draft settings, and only then from
+  the league team order. That last case is a guess and is labelled as one, because if it is
+  wrong then every "on the clock", every simulated pick and every count of picks until your
+  turn is wrong with it. You can set the order by hand; the editor swaps rather than
+  overwrites, so it always stays a permutation with nobody dropped or duplicated.
+- **TARGET / FADE, shown but not scored** — his labels are about price, not talent: a Fade
+  is a player he will not pay the market rate for, and his rank already carries his opinion
+  of the player. Scoring the label on top of the rank would penalise him twice on a signal
+  we cannot evaluate, because no ADP source is wired up. So the labels are displayed on the
+  board and in mock-draft rationales, and left out of the arithmetic.
 - **Big Tier Breaks** — the ranker distinguishes a genuine cliff from an ordinary tier
   boundary, and only the cliffs are flagged on the board.
 - **Live draft tracker** — enter each pick as it happens, with player search, position

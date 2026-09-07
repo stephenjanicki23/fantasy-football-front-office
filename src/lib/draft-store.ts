@@ -15,9 +15,17 @@ export interface DraftBoardState {
   picks: string[];
   /** My seat in round 1, 1-indexed. */
   mySlot: number | null;
+  /**
+   * Round-1 team order, when the user has set it by hand.
+   *
+   * Kept here rather than only on the server because it is a correction to what the
+   * provider reported, and losing it on refresh mid-draft would silently put every team
+   * back on the wrong pick.
+   */
+  order: string[] | null;
 }
 
-const EMPTY: DraftBoardState = { picks: [], mySlot: null };
+const EMPTY: DraftBoardState = { picks: [], mySlot: null, order: null };
 
 interface DraftStore {
   subscribe: (listener: () => void) => () => void;
@@ -81,6 +89,10 @@ function read(key: string): DraftBoardState {
     return {
       picks: Array.isArray(parsed.picks) ? parsed.picks.filter((id) => typeof id === 'string') : [],
       mySlot: typeof parsed.mySlot === 'number' ? parsed.mySlot : null,
+      order:
+        Array.isArray(parsed.order) && parsed.order.every((id) => typeof id === 'string')
+          ? parsed.order
+          : null,
     };
   } catch {
     // A corrupt entry should not brick the page — start clean.

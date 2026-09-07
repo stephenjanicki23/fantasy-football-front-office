@@ -132,6 +132,14 @@ export interface DraftState {
   currentOverall: number;
   /** Team id order for round 1; snake/linear applied from league config. */
   draftOrder: string[];
+  /**
+   * Where `draftOrder` came from.
+   *
+   * `FALLBACK` means nobody told us the order and it is just the league's team order —
+   * a guess. Every "on the clock", every opponent prediction and every simulated pick is
+   * wrong if it is wrong, so it is carried explicitly rather than left to look authoritative.
+   */
+  draftOrderSource: 'PICKS' | 'SETTINGS' | 'MANUAL' | 'FALLBACK';
   complete: boolean;
 }
 

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { recommendDraftPick } from '@/domain/draft-engine';
-import { pickCoordinates } from '@/domain/league-config';
 import { teamOnClock } from '@/domain/opponent-model';
 import { valuePlayers } from '@/domain/valuation';
 import { frameworkEquivalentRound } from '@/domain/draft-strategy';
 import type { DraftPick, DraftState, LeagueState } from '@/domain/types';
 import { loadLeagueState } from '@/services/league-state';
+import { buildBoard, validateBoard } from '@/services/draft-board';
 
 /**
  * Manual draft tracking.
@@ -25,6 +25,8 @@ const RequestSchema = z.object({
   pickedPlayerIds: z.array(z.string().min(1)).max(400).default([]),
   /** Your seat in round 1, 1-indexed. Overrides whatever the provider reported. */
   myDraftSlot: z.number().int().min(1).max(32).optional(),
+  /** Round-1 team order, when the user has set it by hand. */
+  draftOrder: z.array(z.string().min(1)).max(32).optional(),
 });
 
 export async function POST(request: Request) {
@@ -55,82 +57,26 @@ export async function POST(request: Request) {
 
   const { pickedPlayerIds, myDraftSlot } = parsed.data;
 
-  // Reject unknown ids rather than silently ignoring them — a typo'd pick would
-  // otherwise leave a player on the board who is actually gone.
-  const knownIds = new Set(state.players.map((p) => p.id));
-  const unknown = pickedPlayerIds.filter((id) => !knownIds.has(id));
-  if (unknown.length > 0) {
+  const invalid = validateBoard(state, pickedPlayerIds);
+  if (invalid) {
     return NextResponse.json(
-      { error: `Unknown player ids: ${unknown.slice(0, 5).join(', ')}` },
+      {
+        error:
+          invalid.kind === 'UNKNOWN_PLAYERS'
+            ? `Unknown player ids: ${invalid.ids.join(', ')}`
+            : `Player drafted more than once: ${invalid.ids.join(', ')}`,
+      },
       { status: 409 },
     );
   }
 
-  // A player cannot be drafted twice. Silently de-duplicating would misreport which team
-  // holds him and leave the pool wrong.
-  const duplicates = pickedPlayerIds.filter((id, index) => pickedPlayerIds.indexOf(id) !== index);
-  if (duplicates.length > 0) {
-    return NextResponse.json(
-      { error: `Player drafted more than once: ${[...new Set(duplicates)].slice(0, 5).join(', ')}` },
-      { status: 409 },
-    );
-  }
-
-  const draftOrder = state.draft?.draftOrder?.length
-    ? state.draft.draftOrder
-    : state.teams.map((team) => team.id);
-
-  const picks: DraftPick[] = pickedPlayerIds.map((playerId, index) => {
-    const overall = index + 1;
-    const { round, pickInRound } = pickCoordinates(state.config, overall);
-    return {
-      overall,
-      round,
-      pickInRound,
-      teamId: teamOnClock(state.config, draftOrder, overall) ?? draftOrder[0] ?? '',
-      playerId,
-    };
+  const board = buildBoard(state, {
+    pickedPlayerIds,
+    myDraftSlot,
+    draftOrder: parsed.data.draftOrder,
   });
-
-  const draft: DraftState = {
-    picks,
-    currentOverall: picks.length + 1,
-    draftOrder,
-    complete: picks.length >= state.config.teamCount * state.config.draftRounds,
-  };
-
-  /**
-   * Rosters are rebuilt purely from the tracked picks, replacing whatever the provider
-   * reported.
-   *
-   * A draft tracker models a draft from an empty board. Layering picks on top of rosters
-   * the provider already returned would double-count anyone taken in a previous draft,
-   * shrink the available pool by players who are in fact undrafted, and compute roster
-   * fit against teams holding twice their real roster.
-   */
-  const rosterByTeam = new Map<string, string[]>();
-  for (const pick of picks) {
-    if (!pick.playerId) continue;
-    rosterByTeam.set(pick.teamId, [...(rosterByTeam.get(pick.teamId) ?? []), pick.playerId]);
-  }
-
-  const teams = state.teams.map((team, index) => ({
-    ...team,
-    isMyTeam: myDraftSlot !== undefined ? (team.draftSlot ?? index + 1) === myDraftSlot : team.isMyTeam,
-    draftSlot: team.draftSlot ?? index + 1,
-    roster: (rosterByTeam.get(team.id) ?? []).map((playerId) => ({
-      playerId,
-      slot: 'BENCH' as const,
-      acquisitionType: 'DRAFT' as const,
-    })),
-  }));
-
-  const draftState: LeagueState = {
-    ...state,
-    teams,
-    config: { ...state.config, myDraftSlot: myDraftSlot ?? state.config.myDraftSlot },
-    draft,
-  };
+  const { state: draftState, draft, draftOrder, draftOrderSource } = board;
+  const teams = draftState.teams;
 
   const recommendation = recommendDraftPick(draftState, { limit: 12 });
 
@@ -274,6 +220,14 @@ export async function POST(request: Request) {
     board: {
       rankedAvailable: boardOrder.length - recommendation.unrankedAvailable,
       unrankedAvailable: recommendation.unrankedAvailable,
+    },
+    draftOrder: {
+      teamIds: draftOrder,
+      source: draftOrderSource,
+      teams: draftOrder.map((teamId) => ({
+        id: teamId,
+        name: state.teams.find((team) => team.id === teamId)?.name ?? teamId,
+      })),
     },
     rosters: teams.map((team) => ({
       id: team.id,

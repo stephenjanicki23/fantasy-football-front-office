@@ -157,6 +157,11 @@ interface DraftResponse {
   quarters: Quarters;
   expert: ExpertPanel;
   board?: { rankedAvailable: number; unrankedAvailable: number };
+  draftOrder?: {
+    teamIds: string[];
+    source: 'PICKS' | 'SETTINGS' | 'MANUAL' | 'FALLBACK';
+    teams: Array<{ id: string; name: string }>;
+  };
   myNeeds: {
     needOrder: string[];
     needByPosition: Record<string, number>;
@@ -173,6 +178,27 @@ interface DraftResponse {
 }
 
 type SortKey = 'expertRank' | 'draftScore' | 'upside' | 'name' | 'position';
+
+/** One pick the mock draft made for another team. Mirrors the simulate endpoint. */
+interface SimulatedPick {
+  overall: number;
+  round: number;
+  pickInRound: number;
+  teamId: string;
+  teamName: string;
+  playerId: string;
+  playerName: string;
+  position: string;
+  choiceIndex: number;
+  rationale: string;
+}
+
+const DRAFT_ORDER_SOURCE_LABEL: Record<string, string> = {
+  PICKS: 'from the picks already made in your ESPN draft room',
+  SETTINGS: "from your league's draft settings on ESPN",
+  MANUAL: 'set by you',
+  FALLBACK: 'a guess — ESPN did not report one, so this is just the league team order',
+};
 
 const POSITIONS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DST'] as const;
 
@@ -201,10 +227,18 @@ export function DraftTracker({
   const board = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const picks = board.picks;
   const mySlot = board.mySlot ?? initialMyDraftSlot ?? 1;
+  const customOrder = board.order;
 
   const [analysis, setAnalysis] = useState<DraftResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [simulating, setSimulating] = useState(false);
+  const [simLog, setSimLog] = useState<SimulatedPick[]>([]);
+  const [mockMode, setMockMode] = useState(false);
+  const [spread, setSpread] = useState(3);
+  const [seed, setSeed] = useState(1);
+  const [showOrderEditor, setShowOrderEditor] = useState(false);
 
   const [query, setQuery] = useState('');
   const [position, setPosition] = useState<(typeof POSITIONS)[number]>('ALL');
@@ -213,7 +247,7 @@ export function DraftTracker({
   const searchRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(
-    async (nextPicks: string[], slot: number) => {
+    async (nextPicks: string[], slot: number, order: string[] | null = customOrder) => {
       // Yield first: setting state synchronously inside an effect cascades renders.
       await Promise.resolve();
       setLoading(true);
@@ -222,7 +256,11 @@ export function DraftTracker({
         const response = await fetch('/api/draft', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pickedPlayerIds: nextPicks, myDraftSlot: slot }),
+          body: JSON.stringify({
+            pickedPlayerIds: nextPicks,
+            myDraftSlot: slot,
+            ...(order ? { draftOrder: order } : {}),
+          }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? 'Draft analysis failed.');
@@ -233,7 +271,7 @@ export function DraftTracker({
         setLoading(false);
       }
     },
-    [],
+    [customOrder],
   );
 
   // Analysis is fetched by the actions that change the board (below), not synchronised
@@ -348,18 +386,23 @@ export function DraftTracker({
 
   /** Apply a change to the board and re-analyse from the new state. */
   const applyPicks = useCallback(
-    (next: string[], slot: number = mySlot) => {
-      store.update({ picks: next, mySlot: slot });
-      void refresh(next, slot);
+    (next: string[], slot: number = mySlot, order: string[] | null = customOrder) => {
+      store.update({ picks: next, mySlot: slot, order });
+      void refresh(next, slot, order);
     },
-    [store, refresh, mySlot],
+    [store, refresh, mySlot, customOrder],
   );
 
   const draftPlayer = (playerId: string) => {
     if (pickedIds.has(playerId) || picks.length >= totalPicks) return;
-    applyPicks([...picks, playerId]);
+    const next = [...picks, playerId];
+    applyPicks(next);
     setQuery('');
     searchRef.current?.focus();
+    // In mock mode your pick hands the clock straight back to the other teams, which is
+    // what "everyone but me is automated" has to mean in practice. Driven from the pick
+    // itself rather than from an effect watching the analysis, so it fires exactly once.
+    if (mockMode) void simulate('TO_MY_PICK', next);
   };
 
   const undo = () => {
@@ -373,6 +416,58 @@ export function DraftTracker({
   };
 
   const changeSlot = (slot: number) => applyPicks(picks, slot);
+
+  /**
+   * Run the other teams.
+   *
+   * The simulation returns picks rather than a new board, so they are appended here to
+   * the same list a manual pick goes into. That keeps undo, the pick log and the analysis
+   * identical for simulated and real picks — there is no second kind of pick to reason
+   * about, and no way for the two to drift apart.
+   */
+  const simulate = useCallback(
+    async (mode: 'TO_MY_PICK' | 'ONE', fromPicks: string[] = picks) => {
+      setSimulating(true);
+      setError(null);
+      try {
+        const response = await fetch('/api/draft/simulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pickedPlayerIds: fromPicks,
+            myDraftSlot: mySlot,
+            mode,
+            spread,
+            seed,
+            ...(customOrder ? { draftOrder: customOrder } : {}),
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? 'Simulation failed.');
+
+        const simulated: SimulatedPick[] = payload.picks ?? [];
+        if (simulated.length > 0) {
+          setSimLog((previous) => [...simulated, ...previous].slice(0, 40));
+          applyPicks([...fromPicks, ...simulated.map((pick) => pick.playerId)]);
+        } else {
+          // Nothing to do is a real answer, not a failure — usually it is already your turn.
+          void refresh(fromPicks, mySlot);
+        }
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Simulation failed.');
+      } finally {
+        setSimulating(false);
+      }
+    },
+    [picks, mySlot, spread, seed, customOrder, applyPicks, refresh],
+  );
+
+  const setOrder = (order: string[] | null) => applyPicks(picks, mySlot, order);
+
+  const orderTeams = analysis?.draftOrder?.teams ?? [];
+  const orderSource = analysis?.draftOrder?.source ?? null;
+  const orderIsGuessed = orderSource === 'FALLBACK';
+  const busy = loading || simulating;
 
   const nameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -417,12 +512,17 @@ export function DraftTracker({
                 onChange={(event) => changeSlot(Number(event.target.value))}
                 className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
               >
-                {Array.from({ length: teamCount }, (_, i) => i + 1).map((slot) => (
-                  <option key={slot} value={slot}>
-                    {slot}
-                    {teamNames[slot - 1] ? ` · ${teamNames[slot - 1]}` : ''}
-                  </option>
-                ))}
+                {Array.from({ length: teamCount }, (_, i) => i + 1).map((slot) => {
+                  // Label from the live draft order, not the league's team order — after
+                  // the order is corrected, slot 3 is a different team than it was.
+                  const name = orderTeams[slot - 1]?.name ?? teamNames[slot - 1];
+                  return (
+                    <option key={slot} value={slot}>
+                      {slot}
+                      {name ? ` · ${name}` : ''}
+                    </option>
+                  );
+                })}
               </select>
             </label>
             <button
@@ -445,6 +545,181 @@ export function DraftTracker({
         </div>
 
         {error && <p className="mt-3 text-sm text-rose-600 dark:text-rose-400">{error}</p>}
+
+        {/* Mock draft */}
+        <div className="mt-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={mockMode}
+                onChange={(event) => setMockMode(event.target.checked)}
+                className="h-4 w-4"
+              />
+              Mock draft — every team but yours picks itself
+            </label>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => simulate('TO_MY_PICK')}
+                disabled={busy || onClock?.isMe || picks.length >= totalPicks}
+                title={onClock?.isMe ? 'You are on the clock — make your pick' : undefined}
+                className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"
+              >
+                {simulating ? 'Simulating…' : 'Run up to my pick'}
+              </button>
+              <button
+                type="button"
+                onClick={() => simulate('ONE')}
+                disabled={busy || onClock?.isMe || picks.length >= totalPicks}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm transition hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:hover:bg-slate-800"
+              >
+                One pick
+              </button>
+            </div>
+          </div>
+
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            Simulated teams are drafted by the same engine that advises you, running for
+            them: their roster, their needs, their turn. That makes them a reasonable
+            sparring partner and <strong>not</strong> a prediction of what your leaguemates
+            will actually do. Your own picks are always yours — no mode drafts for you.
+          </p>
+
+          <div className="mt-2 flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              Variety
+              <input
+                type="range"
+                min={0}
+                max={6}
+                value={spread}
+                onChange={(event) => setSpread(Number(event.target.value))}
+                className="w-28"
+              />
+              <span className="tabular">
+                {spread === 0 ? 'always the top pick' : `top ${spread + 1}`}
+              </span>
+            </label>
+            <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              Seed
+              <input
+                type="number"
+                min={0}
+                value={seed}
+                onChange={(event) => setSeed(Number(event.target.value) || 0)}
+                className="w-20 rounded border border-slate-300 px-1.5 py-0.5 tabular dark:border-slate-700 dark:bg-slate-950"
+              />
+              <span>same seed replays the same mock</span>
+            </label>
+          </div>
+
+          {simLog.length > 0 && (
+            <ol className="mt-3 max-h-40 space-y-1 overflow-y-auto text-xs">
+              {simLog.map((pick) => (
+                <li key={pick.overall} className="flex flex-wrap gap-2 text-slate-600 dark:text-slate-300">
+                  <span className="tabular text-slate-400">
+                    {pick.round}.{String(pick.pickInRound).padStart(2, '0')}
+                  </span>
+                  <span className="font-medium">{pick.teamName}</span>
+                  <span>
+                    {pick.playerName}{' '}
+                    <span className="text-slate-400">({pick.rationale})</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+
+        {/* Draft order */}
+        <div
+          className={`mt-3 rounded-lg border p-3 ${
+            orderIsGuessed
+              ? 'border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40'
+              : 'border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium">
+              Draft order{' '}
+              <span className="font-normal text-slate-500 dark:text-slate-400">
+                — {orderSource ? DRAFT_ORDER_SOURCE_LABEL[orderSource] : 'loading'}
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowOrderEditor((open) => !open)}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            >
+              {showOrderEditor ? 'Done' : 'Set order'}
+            </button>
+          </div>
+
+          {orderIsGuessed && (
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
+              ESPN has not published an order for this draft, so this is simply the league
+              team order. If it is wrong then every &ldquo;on the clock&rdquo;, every
+              simulated pick and every count of picks until your turn is wrong with it —
+              worth setting before you rely on any of this.
+            </p>
+          )}
+
+          <ol className="mt-2 flex flex-wrap gap-1.5 text-xs">
+            {orderTeams.map((team, index) => (
+              <li
+                key={team.id}
+                className={`rounded px-2 py-1 ${
+                  index + 1 === mySlot
+                    ? 'bg-emerald-500/15 font-semibold text-emerald-700 dark:text-emerald-300'
+                    : 'bg-slate-100 dark:bg-slate-800'
+                }`}
+              >
+                <span className="tabular text-slate-400">{index + 1}.</span> {team.name}
+              </li>
+            ))}
+          </ol>
+
+          {showOrderEditor && orderTeams.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {orderTeams.map((_, slotIndex) => (
+                <label key={slotIndex} className="flex items-center gap-2 text-sm">
+                  <span className="tabular w-8 text-slate-400">{slotIndex + 1}.</span>
+                  <select
+                    value={(customOrder ?? orderTeams.map((t) => t.id))[slotIndex] ?? ''}
+                    onChange={(event) => {
+                      // Swap rather than overwrite, so the order stays a permutation and
+                      // no team can be dropped or duplicated by editing one row.
+                      const current = [...(customOrder ?? orderTeams.map((t) => t.id))];
+                      const chosen = event.target.value;
+                      const from = current.indexOf(chosen);
+                      if (from === -1) return;
+                      [current[slotIndex], current[from]] = [current[from]!, current[slotIndex]!];
+                      setOrder(current);
+                    }}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-950"
+                  >
+                    {orderTeams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+              {customOrder && (
+                <button
+                  type="button"
+                  onClick={() => setOrder(null)}
+                  className="mt-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                >
+                  Reset to what the provider reported
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {analysis?.bestPick && onClock?.isMe && (
           <div className="mt-3 rounded-lg bg-slate-900 p-3 text-white dark:bg-slate-100 dark:text-slate-900">
