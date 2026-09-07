@@ -61,6 +61,12 @@ export interface ExpertRankingSet {
    * computable from projections rather than guessed at.
    */
   sourceScoring?: Partial<ScoringRules>;
+  /**
+   * Ranks after which the ranker marks a "Big Tier Break" — a genuine cliff rather than
+   * an ordinary tier boundary. Distinct from tiers because he uses both, and the cliffs
+   * are the ones that should change a draft decision.
+   */
+  bigTierBreakAfterRanks?: number[];
   /** Format-specific strategy notes, e.g. how to play the position in superflex. */
   guidance: string[];
   players: ExpertRankedPlayer[];
@@ -141,7 +147,9 @@ export function tierGroups(rankings: ExpertRankingSet, position: Position): Expe
       position,
       tier,
       players: group,
-      bigTierBreakAfter: false,
+      bigTierBreakAfter: (rankings.bigTierBreakAfterRanks ?? []).some(
+        (rank) => rank === Math.max(...group.map((player) => player.rank)),
+      ),
     }));
 }
 
@@ -185,4 +193,12 @@ export function normaliseName(name: string): string {
     .toLowerCase()
     .replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, '')
     .replace(/[^a-z0-9]/g, '');
+}
+
+/** Is there a genuine cliff immediately after this player? */
+export function isBigTierBreakAfter(
+  rankings: ExpertRankingSet,
+  ranking: ExpertRankedPlayer,
+): boolean {
+  return (rankings.bigTierBreakAfterRanks ?? []).includes(ranking.rank);
 }

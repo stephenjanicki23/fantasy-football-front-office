@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { computeFormatAdjustment, scoringDiffers } from '@/domain/format-adjustment';
 import { DEFAULT_LEAGUE_CONFIG } from '@/domain/league-config';
-import { RB_TIERS_2026, QB_TIERS_2026 } from '@/data/expert-rankings';
+import { RB_TIERS_2026, QB_TIERS_2026, WR_TIERS_2026 } from '@/data/expert-rankings';
+import { isBigTierBreakAfter } from '@/domain/expert-rankings';
 import type { ExpertRankedPlayer } from '@/domain/expert-rankings';
 import type { Player, Projection } from '@/domain/types';
 
@@ -148,5 +149,59 @@ describe('RB_TIERS_2026 integrity', () => {
     expect(RB_TIERS_2026.players.filter((p) => p.tier === 1).map((p) => p.name)).toEqual([
       'Jahmyr Gibbs',
     ]);
+  });
+});
+
+describe('WR_TIERS_2026 integrity', () => {
+  it('has 94 players with contiguous ranks', () => {
+    const ranks = WR_TIERS_2026.players.map((p) => p.rank).sort((a, b) => a - b);
+    expect(ranks).toEqual(Array.from({ length: 94 }, (_, i) => i + 1));
+  });
+
+  it('preserves the published sub-tiers in order', () => {
+    const seen: string[] = [];
+    for (const player of [...WR_TIERS_2026.players].sort((a, b) => a.rank - b.rank)) {
+      if (seen[seen.length - 1] !== player.subTier) seen.push(player.subTier!);
+    }
+    expect(seen).toEqual(['1', '2', '3', '4', '5a', '5b', '5c', '6', '7']);
+  });
+
+  it('records both Big Tier Breaks he calls out', () => {
+    expect(WR_TIERS_2026.bigTierBreakAfterRanks).toEqual([12, 48]);
+  });
+
+  it('is also full PPR, so it needs translating for this league', () => {
+    expect(scoringDiffers(WR_TIERS_2026.sourceScoring!, config.scoring)).toBe(true);
+  });
+
+  it('separates stated Targets from the group he described as a range', () => {
+    const stated = WR_TIERS_2026.players.filter((p) => p.designationBasis === 'stated');
+    expect(stated.map((p) => p.name)).toEqual([
+      'Puka Nacua',
+      "Ja'Marr Chase",
+      'Luther Burden',
+      'Cyrus Allen',
+    ]);
+    const inferred = WR_TIERS_2026.players.filter((p) => p.designationBasis === 'inferred');
+    // Jameson Williams plus the late-round rookie/second-year block.
+    expect(inferred).toHaveLength(8);
+    expect(inferred.every((p) => p.designation === 'TARGET')).toBe(true);
+  });
+});
+
+describe('big tier breaks', () => {
+  it('flags the cliff after the exact player, not the tier generally', () => {
+    const nacua = WR_TIERS_2026.players.find((p) => p.rank === 12)!;
+    const notCliff = WR_TIERS_2026.players.find((p) => p.rank === 11)!;
+    expect(isBigTierBreakAfter(WR_TIERS_2026, nacua)).toBe(true);
+    expect(isBigTierBreakAfter(WR_TIERS_2026, notCliff)).toBe(false);
+  });
+
+  it('records the RB cliff after Gibbs alone', () => {
+    expect(RB_TIERS_2026.bigTierBreakAfterRanks).toEqual([1]);
+  });
+
+  it('records no cliffs at QB, where he says standard breaks held', () => {
+    expect(QB_TIERS_2026.bigTierBreakAfterRanks ?? []).toEqual([]);
   });
 });

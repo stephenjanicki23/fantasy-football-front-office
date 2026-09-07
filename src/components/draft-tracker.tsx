@@ -58,6 +58,7 @@ interface Candidate {
     disagreement: number;
     formatShift: number | null;
     formatShiftExplain: string | null;
+    bigTierBreakAfter: boolean;
   } | null;
   explain: string;
 }
@@ -698,6 +699,14 @@ export function DraftTracker({
                               >
                                 {expert.formatShift > 0 ? '▲' : '▼'}
                                 {Math.abs(expert.formatShift)}
+                              </span>
+                            )}
+                            {expert.bigTierBreakAfter && (
+                              <span
+                                title="The ranker marks a genuine cliff immediately after this player"
+                                className="ml-1 rounded bg-slate-900 px-1 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900"
+                              >
+                                CLIFF
                               </span>
                             )}
                             {expert.designation === 'FADE' && (

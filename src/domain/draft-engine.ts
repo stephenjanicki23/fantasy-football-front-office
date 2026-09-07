@@ -30,6 +30,7 @@ import {
 import { computeFormatAdjustment, type FormatShift } from './format-adjustment';
 import {
   guidanceForLeague,
+  isBigTierBreakAfter,
   matchExpertRankings,
   rankingDisagreement,
   type ExpertRankedPlayer,
@@ -109,6 +110,8 @@ export interface DraftCandidate {
     /** How this league's scoring moves him relative to the others ranked, if at all. */
     formatShift: number | null;
     formatShiftExplain: string | null;
+    /** True when the ranker marks a genuine cliff immediately after this player. */
+    bigTierBreakAfter: boolean;
   } | null;
   explain: Explained<number>;
 }
@@ -343,6 +346,7 @@ export function recommendDraftPick(
         rankingMatch?.byPlayerId.get(player.player.id),
         player,
         formatShifts.get(player.player.id),
+        state.expertRankingSets ?? [],
       ),
       explain: explained(
         draftScore,
@@ -604,8 +608,14 @@ function expertFor(
   ranking: ExpertRankedPlayer | undefined,
   player: ValuedPlayer,
   shift: FormatShift | undefined,
+  sets: Array<Parameters<typeof isBigTierBreakAfter>[0]>,
 ): DraftCandidate['expert'] {
   if (!ranking) return null;
+  const cliff = sets.some(
+    (set) =>
+      set.players.some((entry) => entry.position === ranking.position) &&
+      isBigTierBreakAfter(set, ranking),
+  );
   return {
     tier: ranking.tier,
     rank: ranking.rank,
@@ -614,5 +624,6 @@ function expertFor(
     disagreement: rankingDisagreement(player, ranking),
     formatShift: shift?.shift ?? null,
     formatShiftExplain: shift?.explain.formula ?? null,
+    bigTierBreakAfter: cliff,
   };
 }

@@ -64,6 +64,10 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   same projections are scored both ways and the ranked cohort re-ordered under each; the
   difference isolates the format effect and is shown per player (▲/▼). Pass-catching
   backs fall, rushing-heavy backs rise. The ranker's published ranks are never altered.
+  Applied per position: his QB tiers already match this league's passing scoring and are
+  correctly left untranslated, while his RB and WR tiers are not.
+- **Big Tier Breaks** — the ranker distinguishes a genuine cliff from an ordinary tier
+  boundary, and only the cliffs are flagged on the board.
 - **Live draft tracker** — enter each pick as it happens, with player search, position
   filter and sorting. ESPN's draft room has no usable feed (ESPN_INTEGRATION.md), so the
   board is entered manually and saved to the browser, surviving a mid-draft refresh.

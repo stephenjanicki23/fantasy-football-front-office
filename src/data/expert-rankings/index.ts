@@ -1,6 +1,7 @@
 import type { ExpertRankingSet } from '@/domain/expert-rankings';
 import { QB_TIERS_2026 } from './qb-2026';
 import { RB_TIERS_2026 } from './rb-2026';
+import { WR_TIERS_2026 } from './wr-2026';
 
 /**
  * Bundled expert ranking sets, one per position.
@@ -10,10 +11,14 @@ import { RB_TIERS_2026 } from './rb-2026';
  * while the RB tiers were built for full PPR (this league is 0.5). Flattening them would
  * lose exactly the metadata needed to translate one and not the other.
  *
- * The ranker's TE and WR tiers are separate pieces that have not been supplied, so those
- * positions fall back to the app's own projection-derived tiers.
+ * The ranker's TE tiers are a separate piece that has not been supplied, so tight end
+ * falls back to the app's own projection-derived tiers.
  */
-export const EXPERT_RANKING_SETS: ExpertRankingSet[] = [QB_TIERS_2026, RB_TIERS_2026];
+export const EXPERT_RANKING_SETS: ExpertRankingSet[] = [
+  QB_TIERS_2026,
+  RB_TIERS_2026,
+  WR_TIERS_2026,
+];
 
 export function mergedExpertRankings(): ExpertRankingSet | null {
   if (EXPERT_RANKING_SETS.length === 0) return null;
@@ -30,4 +35,4 @@ export function mergedExpertRankings(): ExpertRankingSet | null {
   };
 }
 
-export { QB_TIERS_2026, RB_TIERS_2026 };
+export { QB_TIERS_2026, RB_TIERS_2026, WR_TIERS_2026 };

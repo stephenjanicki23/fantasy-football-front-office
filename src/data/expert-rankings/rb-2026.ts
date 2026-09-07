@@ -27,6 +27,8 @@ export const RB_TIERS_2026: ExpertRankingSet = {
   scoringNote:
     'Built for FULL PPR. This league is 0.5 PPR, so pass-catching backs are overrated by these ranks and rushing-heavy backs underrated; the app computes the shift rather than editing his ranks.',
   sourceScoring: { receptionPoints: 1 },
+  // He places one Big Tier Break, after Gibbs alone.
+  bigTierBreakAfterRanks: [1],
   guidance: [
     'The RB Dead Zone is a dangerous place to spend draft capital, especially on the expensive veteran floor plays.',
     'Value in the Dead Zone goes very flat — similar bets are available later, so the opportunity cost of waiting is low.',
