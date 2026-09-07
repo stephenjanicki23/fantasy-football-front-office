@@ -45,6 +45,8 @@ export default async function DraftPage() {
   // are instant client-side; only the analysis round-trips as picks are entered.
   buildTiers(valuation.players);
   const rosteredIds = new Set(state.teams.flatMap((t) => t.roster.map((r) => r.playerId)));
+  // The ranker's view travels with the pool, so the board shows his tiers on every row
+  // from the first paint — before any pick has been entered and the API has replied.
   const initialPool: PoolPlayer[] = valuation.players
     .filter((valued) => !rosteredIds.has(valued.player.id))
     .map((valued) => ({
@@ -54,13 +56,9 @@ export default async function DraftPage() {
       nflTeam: valued.player.nflTeam ?? null,
       byeWeek: valued.player.byeWeek ?? null,
       status: valued.player.status,
-      projectedPoints: valued.projectedPoints,
-      leagueValue: valued.leagueValue,
-      vor: valued.vor,
-      positionRank: valued.positionRank,
-      overallRank: valued.overallRank,
-      tier: valued.tier ?? null,
-    }));
+      expert: recommendation.expertByPlayerId.get(valued.player.id) ?? null,
+    }))
+    .sort(byExpertTierThenRank);
 
   const teamNames = [...state.teams]
     .sort((a, b) => (a.draftSlot ?? 0) - (b.draftSlot ?? 0))
@@ -427,4 +425,15 @@ export default async function DraftPage() {
       )}
     </>
   );
+}
+
+/** His tiers order the board; players he has not ranked sit behind those he has. */
+function byExpertTierThenRank(a: PoolPlayer, b: PoolPlayer): number {
+  if (a.expert && !b.expert) return -1;
+  if (!a.expert && b.expert) return 1;
+  if (a.expert && b.expert) {
+    if (a.expert.tier !== b.expert.tier) return a.expert.tier - b.expert.tier;
+    return a.expert.rank - b.expert.rank;
+  }
+  return a.name.localeCompare(b.name);
 }

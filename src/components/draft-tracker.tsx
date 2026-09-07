@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { PositionBadge } from '@/components/ui';
-import { formatPercent, formatPoints } from '@/lib/format';
+import { formatPercent } from '@/lib/format';
 import { getDraftStore } from '@/lib/draft-store';
 
 /**
@@ -28,12 +28,25 @@ export interface PoolPlayer {
   nflTeam: string | null;
   byeWeek: number | null;
   status: string;
-  projectedPoints: number;
-  leagueValue: number;
-  vor: number;
-  positionRank: number;
-  overallRank: number;
-  tier: number | null;
+  /**
+   * The ranker's view, on every player rather than only on the shortlist.
+   *
+   * Our own projected points, league value and VOR used to live here and drive the board.
+   * They are gone: this league drafts off the supplied tiers, and a projection column
+   * sitting next to them only invited the board to be read on our numbers instead of his.
+   */
+  expert: ExpertView | null;
+}
+
+export interface ExpertView {
+  tier: number;
+  rank: number;
+  designation: 'TARGET' | 'FADE' | null;
+  note: string | null;
+  disagreement: number;
+  formatShift: number | null;
+  formatShiftExplain: string | null;
+  bigTierBreakAfter: boolean;
 }
 
 interface Candidate {
@@ -143,6 +156,7 @@ interface DraftResponse {
   strategy: StrategyPanel | null;
   quarters: Quarters;
   expert: ExpertPanel;
+  board?: { rankedAvailable: number; unrankedAvailable: number };
   myNeeds: {
     needOrder: string[];
     needByPosition: Record<string, number>;
@@ -158,7 +172,7 @@ interface DraftResponse {
   }>;
 }
 
-type SortKey = 'draftScore' | 'upside' | 'expertRank' | 'projectedPoints' | 'leagueValue' | 'name' | 'position';
+type SortKey = 'expertRank' | 'draftScore' | 'upside' | 'name' | 'position';
 
 const POSITIONS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DST'] as const;
 
@@ -194,7 +208,7 @@ export function DraftTracker({
 
   const [query, setQuery] = useState('');
   const [position, setPosition] = useState<(typeof POSITIONS)[number]>('ALL');
-  const [sortKey, setSortKey] = useState<SortKey>('draftScore');
+  const [sortKey, setSortKey] = useState<SortKey>('expertRank');
 
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -247,13 +261,20 @@ export function DraftTracker({
     return map;
   }, [analysis]);
 
+  /**
+   * Built from the whole pool, not from the shortlist.
+   *
+   * Reading it off `analysis.candidates` meant only the twelve players the engine had
+   * shortlisted carried a tier; every other row showed a dash, which looks exactly like
+   * "the ranker has no opinion on him" for players he had in fact ranked.
+   */
   const expertById = useMemo(() => {
-    const map = new Map<string, NonNullable<Candidate['expert']>>();
-    for (const candidate of analysis?.candidates ?? []) {
-      if (candidate.expert) map.set(candidate.id, candidate.expert);
+    const map = new Map<string, ExpertView>();
+    for (const player of pool) {
+      if (player.expert) map.set(player.id, player.expert);
     }
     return map;
-  }, [analysis]);
+  }, [pool]);
 
   const upsideById = useMemo(() => {
     const map = new Map<string, number>();
@@ -272,42 +293,50 @@ export function DraftTracker({
       );
     });
 
+    /**
+     * Every tiebreak falls back to his tiers.
+     *
+     * There is nothing else left to fall back to, and that is deliberate: the projected
+     * points and league value that used to break ties were the numbers this board is no
+     * longer read on.
+     */
+    const byExpert = (a: PoolPlayer, b: PoolPlayer) => {
+      const ea = expertById.get(a.id);
+      const eb = expertById.get(b.id);
+      if (ea && !eb) return -1;
+      if (!ea && eb) return 1;
+      if (ea && eb) {
+        if (ea.tier !== eb.tier) return ea.tier - eb.tier;
+        return ea.rank - eb.rank;
+      }
+      return a.name.localeCompare(b.name);
+    };
+
     const sorted = [...filtered].sort((a, b) => {
       switch (sortKey) {
         case 'name':
           return a.name.localeCompare(b.name);
         case 'position':
-          return a.position.localeCompare(b.position) || b.projectedPoints - a.projectedPoints;
+          return a.position.localeCompare(b.position) || byExpert(a, b);
         case 'upside': {
           const ua = upsideById.get(a.id);
           const ub = upsideById.get(b.id);
           if (ua !== undefined && ub !== undefined) return ub - ua;
           if (ua !== undefined) return -1;
           if (ub !== undefined) return 1;
-          return b.leagueValue - a.leagueValue;
+          return byExpert(a, b);
         }
-        case 'expertRank': {
-          const ea = expertById.get(a.id)?.rank;
-          const eb = expertById.get(b.id)?.rank;
-          if (ea !== undefined && eb !== undefined) return ea - eb;
-          if (ea !== undefined) return -1;
-          if (eb !== undefined) return 1;
-          return b.leagueValue - a.leagueValue;
-        }
-        case 'projectedPoints':
-          return b.projectedPoints - a.projectedPoints;
-        case 'leagueValue':
-          return b.leagueValue - a.leagueValue;
-        case 'draftScore':
-        default: {
-          // Engine-scored players first, in score order; everyone else by league value.
+        case 'draftScore': {
           const sa = scoreById.get(a.id);
           const sb = scoreById.get(b.id);
           if (sa !== undefined && sb !== undefined) return sb - sa;
           if (sa !== undefined) return -1;
           if (sb !== undefined) return 1;
-          return b.leagueValue - a.leagueValue;
+          return byExpert(a, b);
         }
+        case 'expertRank':
+        default:
+          return byExpert(a, b);
       }
     });
 
@@ -515,10 +544,25 @@ export function DraftTracker({
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-sm font-semibold tracking-wide uppercase">Expert tiers</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {analysis.expert.source} · opinion, shown alongside the projections rather
-              than replacing them
+              {analysis.expert.source} · this board is ranked on his tiers
             </p>
           </div>
+
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            His lists are positional — QB, RB, WR and TE ranked separately — so he never
+            ranked his RB6 against his WR9. Ordering the board across positions applies his
+            tier numbers and Big Tier Breaks; that part is this app&rsquo;s reading of his
+            structure, not a ranking he published.
+            {analysis.board && analysis.board.unrankedAvailable > 0 && (
+              <>
+                {' '}
+                {analysis.board.rankedAvailable} available players carry his ranking;{' '}
+                {analysis.board.unrankedAvailable} sit outside his lists (kickers, defences
+                and the deep pool) and are shown as <em>unranked</em> rather than scored on
+                numbers of ours.
+              </>
+            )}
+          </p>
 
           {analysis.expert.objectives.map((objective) => (
             <p
@@ -606,16 +650,23 @@ export function DraftTracker({
               onChange={(event) => setSortKey(event.target.value as SortKey)}
               className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
             >
+              <option value="expertRank">Expert tier / rank</option>
               <option value="draftScore">Draft score</option>
               <option value="upside">Upside (Q1 ceiling at this price)</option>
-              <option value="expertRank">Expert tier / rank</option>
-              <option value="leagueValue">League value</option>
-              <option value="projectedPoints">Projected points</option>
               <option value="position">Position</option>
               <option value="name">Name (A–Z)</option>
             </select>
           </label>
         </div>
+
+        {analysis?.board?.rankedAvailable === 0 && (
+          <p className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            None of the supplied rankings could be matched to this player pool, so this
+            board carries no ranking information and is listed alphabetically. That is
+            expected on sample data, whose players are synthetic; against a real ESPN pool
+            it means the names are not lining up, which is worth fixing before you draft.
+          </p>
+        )}
 
         <div className="max-h-[32rem] overflow-y-auto">
           <table className="w-full text-sm">
@@ -623,19 +674,16 @@ export function DraftTracker({
               <tr className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
                 <th className="py-2 pr-2 pl-4">Player</th>
                 <th className="py-2 pr-2">Team</th>
-                <th className="tabular py-2 pr-2 text-right">Proj</th>
-                <th className="tabular py-2 pr-2 text-right">Value</th>
+                <th className="py-2 pr-2">Expert tier</th>
                 <th className="tabular py-2 pr-2 text-right">Score</th>
                 <th className="tabular py-2 pr-2 text-right">Upside</th>
-                <th className="py-2 pr-2 text-right">Expert</th>
-                <th className="tabular py-2 pr-2 text-right">Tier</th>
                 <th className="py-2 pr-4 text-right">Draft</th>
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
                     {query ? `No available player matches “${query}”.` : 'No players available.'}
                   </td>
                 </tr>
@@ -651,10 +699,6 @@ export function DraftTracker({
                       <span className="flex items-center gap-2">
                         <PositionBadge position={player.position} />
                         <span className="font-medium">{player.name}</span>
-                        <span className="text-xs text-slate-400">
-                          {player.position}
-                          {player.positionRank}
-                        </span>
                         {player.status !== 'ACTIVE' && (
                           <span className="rounded bg-rose-500/15 px-1.5 py-0.5 text-xs text-rose-600 dark:text-rose-400">
                             {player.status}
@@ -668,20 +712,18 @@ export function DraftTracker({
                         <span className="text-xs text-slate-400"> (bye {player.byeWeek})</span>
                       ) : null}
                     </td>
-                    <td className="tabular py-2 pr-2 text-right">
-                      {formatPoints(player.projectedPoints)}
-                    </td>
-                    <td className="tabular py-2 pr-2 text-right">{player.leagueValue}</td>
-                    <td className="tabular py-2 pr-2 text-right font-semibold">
-                      {score === undefined ? '—' : score}
-                    </td>
-                    <td className="tabular py-2 pr-2 text-right">
-                      {upsideById.get(player.id) ?? '—'}
-                    </td>
-                    <td className="py-2 pr-2 text-right whitespace-nowrap">
+                    <td className="py-2 pr-2 whitespace-nowrap">
                       {(() => {
                         const expert = expertById.get(player.id);
-                        if (!expert) return <span className="text-slate-400">—</span>;
+                        if (!expert)
+                          return (
+                            <span
+                              className="text-xs text-slate-400"
+                              title="Outside the supplied tier lists — no ranking to show, and nothing of ours substituted for one"
+                            >
+                              unranked
+                            </span>
+                          );
                         return (
                           <span title={expert.note ?? undefined}>
                             <span className="tabular">
@@ -723,7 +765,12 @@ export function DraftTracker({
                         );
                       })()}
                     </td>
-                    <td className="tabular py-2 pr-2 text-right">{player.tier ?? '—'}</td>
+                    <td className="tabular py-2 pr-2 text-right font-semibold">
+                      {score === undefined ? '—' : score}
+                    </td>
+                    <td className="tabular py-2 pr-2 text-right">
+                      {upsideById.get(player.id) ?? '—'}
+                    </td>
                     <td className="py-2 pr-4 text-right">
                       <button
                         type="button"

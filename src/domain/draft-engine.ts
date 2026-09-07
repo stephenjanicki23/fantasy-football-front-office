@@ -32,8 +32,10 @@ import {
   guidanceForLeague,
   isBigTierBreakAfter,
   matchExpertRankings,
+  expertBoardValue,
   rankingDisagreement,
   type ExpertRankedPlayer,
+  type ExpertRankingSet,
 } from './expert-rankings';
 import type { FantasyTeam, LeagueConfig, LeagueState, Position } from './types';
 import { indexByPlayer, valuePlayers, type ValuedPlayer } from './valuation';
@@ -93,6 +95,10 @@ export interface DraftCandidate {
   expectedAvailability: number;
   /** 0-100 how much the teams picking before you want this position. */
   opponentDemand: number;
+  /** How the ranker's tiers value him, or null when he has not ranked him. */
+  valueExplain: Explained<number> | null;
+  /** False for kickers, defences and anyone past the end of his lists. */
+  expertRanked: boolean;
   tier?: number;
   tierRemaining: number;
   tierCliff: number;
@@ -150,6 +156,10 @@ export interface DraftRecommendation {
   formatSummaries: string[];
   /** Ranked players that could not be matched to the pool — reported, never hidden. */
   expertUnmatched: string[];
+  /** The ranker's view of every available player, so the big board can show it too. */
+  expertByPlayerId: Map<string, NonNullable<DraftCandidate['expert']>>;
+  /** Available players he has not ranked at all (kickers, defences, the deep pool). */
+  unrankedAvailable: number;
 }
 
 export interface DraftEngineOptions {
@@ -283,6 +293,43 @@ export function recommendDraftPick(
     ),
   );
 
+  /**
+   * The ranker's view of *every* available player, not just the shortlist.
+   *
+   * Building this only for the candidates left the big board — which is the thing you
+   * actually scan during a draft — showing a tier for a handful of players and a dash for
+   * everyone else, which reads as "he didn't rank them" when in fact he had.
+   */
+  // Each set is one position's list, so the set a ranking came from is its position's.
+  // That matters: the sets carry per-position metadata (Big Tier Breaks, source scoring)
+  // that would be wrong if read off another position's list.
+  const setByPosition = new Map<Position, ExpertRankingSet>();
+  for (const set of state.expertRankingSets ?? []) {
+    for (const entry of set.players) {
+      if (!setByPosition.has(entry.position)) setByPosition.set(entry.position, set);
+    }
+  }
+
+  const expertByPlayerId = new Map<string, NonNullable<DraftCandidate['expert']>>();
+  const expertValueByPlayerId = new Map<string, Explained<number>>();
+  for (const player of available) {
+    const ranking = rankingMatch?.byPlayerId.get(player.player.id);
+    if (!ranking) continue;
+    const entry = expertFor(
+      ranking,
+      player,
+      formatShifts.get(player.player.id),
+      state.expertRankingSets ?? [],
+    );
+    if (entry) expertByPlayerId.set(player.player.id, entry);
+
+    const set = setByPosition.get(ranking.position);
+    if (set) expertValueByPlayerId.set(player.player.id, expertBoardValue(set, ranking));
+  }
+  const unrankedAvailable = available.filter(
+    (player) => !expertByPlayerId.has(player.player.id),
+  ).length;
+
   const candidates: DraftCandidate[] = available.slice(0, 80).map((player) => {
     const positionScarcity = scarcity.get(player.player.position);
     const scarcityScore = positionScarcity?.score ?? 0;
@@ -320,8 +367,20 @@ export function recommendDraftPick(
       { positionSignificance: significanceByPosition.get(player.player.position) },
     );
 
+    /**
+     * Value is the ranker's, not ours.
+     *
+     * This used to be `player.leagueValue` — our own projection-derived number. Where he
+     * has ranked a player, his opinion is the better evidence and is what drives the
+     * board. Where he has not (kickers, defences, the deep pool past his lists), there is
+     * no honest substitute, so the player scores zero on value and is marked unranked
+     * rather than being quietly scored on numbers the user asked us to stop using.
+     */
+    const expertValueExplain = expertValueByPlayerId.get(player.player.id) ?? null;
+    const value = expertValueExplain?.value ?? 0;
+
     const draftScore = round2(
-      weights.value * player.leagueValue +
+      weights.value * value +
         weights.scarcity * scarcityScore +
         weights.rosterFit * rosterFit +
         weights.urgency * urgency +
@@ -332,7 +391,9 @@ export function recommendDraftPick(
     return {
       player,
       draftScore,
-      value: player.leagueValue,
+      value,
+      valueExplain: expertValueExplain,
+      expertRanked: expertValueExplain !== null,
       rosterFit,
       scarcity: scarcityScore,
       expectedAvailability: availability,
@@ -342,16 +403,11 @@ export function recommendDraftPick(
       tierCliff: round2(tierCliff(tiers, player)),
       marginalStarterGain: marginal,
       upside,
-      expert: expertFor(
-        rankingMatch?.byPlayerId.get(player.player.id),
-        player,
-        formatShifts.get(player.player.id),
-        state.expertRankingSets ?? [],
-      ),
+      expert: expertByPlayerId.get(player.player.id) ?? null,
       explain: explained(
         draftScore,
         {
-          leagueValue: player.leagueValue,
+          expertValue: value,
           scarcity: scarcityScore,
           rosterFit,
           expectedAvailability: availability,
@@ -361,10 +417,11 @@ export function recommendDraftPick(
           round,
           quarter,
         },
-        `Q${quarter} weights — draftScore = ${weights.value}×value(${player.leagueValue}) + ${weights.scarcity}×scarcity(${scarcityScore}) + ` +
+        `Q${quarter} weights — draftScore = ${weights.value}×value(${value}${expertValueExplain ? '' : ', unranked by him'}) + ${weights.scarcity}×scarcity(${scarcityScore}) + ` +
           `${weights.rosterFit}×fit(${rosterFit}) + ${weights.urgency}×urgency(${round2(urgency)}) + ` +
-          `${weights.opponentDemand}×demand(${demand}) + ${weights.upside}×upside(${upside.score}) = ${draftScore}`,
-        ['projections', 'rosters', 'opponent-model', 'league-config'],
+          `${weights.opponentDemand}×demand(${demand}) + ${weights.upside}×upside(${upside.score}) = ${draftScore}. ` +
+          `Value is ${expertValueExplain ? expertValueExplain.formula : 'zero because he has not ranked this player'}`,
+        ['expert-rankings', 'rosters', 'opponent-model', 'league-config'],
       ),
     };
   });
@@ -474,6 +531,8 @@ export function recommendDraftPick(
     expertSource: state.expertRankings?.source ?? null,
     formatSummaries,
     expertUnmatched: rankingMatch?.unmatched.map((r) => r.name) ?? [],
+    expertByPlayerId,
+    unrankedAvailable,
   };
 }
 

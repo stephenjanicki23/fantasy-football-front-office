@@ -53,10 +53,15 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   an 8-team league takes more rounds to consume it, while Q2/Q3 track starting slots
   because positional supply scales with team count. Two starting QB slots stretch Q1 and
   move QB out of its usual Q3 window.
-- **Expert tiers** — a ranker's published tiers for all four positions (36 QB, 91 RB,
-  94 WR, 50 TE), attributed and dated, shown alongside the projections rather than
-  replacing them: tier, positional rank, FADE/TARGET labels,
-  and the ranker's format-specific guidance filtered to this league. His positional
+- **Expert tiers rank the board** — a ranker's published tiers for all four positions
+  (36 QB, 91 RB, 94 WR, 50 TE), attributed and dated, are what the draft board is ordered
+  and scored on. The app's own projection-derived numbers are deliberately not shown or
+  used there. His lists are *positional* and he published no overall board, so ordering
+  across positions applies his tier numbers and Big Tier Breaks — an app decision, labelled
+  as one on the page rather than passed off as his. A player outside his lists (kickers,
+  defences, the deep pool) reads as `unranked` and scores zero on value; nothing of ours is
+  substituted for an opinion he did not give. Each row shows his tier, positional rank and
+  FADE/TARGET label, alongside his format-specific guidance filtered to this league. His positional
   deadlines are tracked live against remaining supply — "two QBs by the end of Tier 3"
   reports whether the window is open, closing or gone. Rankings that cannot be matched to
   the player pool are listed, never silently dropped.
@@ -68,7 +73,10 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   never altered. Applied per position: his QB tiers already match this league's passing
   scoring and are correctly left untranslated, while the other three are not. The size of
   the correction tracks how much reception volume actually varies within a position — it
-  moves receivers most and tight ends least.
+  moves receivers most and tight ends least. Note that this is the one place projections
+  are still used: re-scoring a stat line under two rule sets is the whole method, so
+  removing projections entirely would mean showing his full-PPR order with no 0.5-PPR
+  correction at all. They are an input to adjusting *his* ranks, never a ranking of ours.
 - **Big Tier Breaks** — the ranker distinguishes a genuine cliff from an ordinary tier
   boundary, and only the cliffs are flagged on the board.
 - **Live draft tracker** — enter each pick as it happens, with player search, position

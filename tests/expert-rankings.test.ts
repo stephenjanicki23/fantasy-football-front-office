@@ -3,11 +3,14 @@ import {
   guidanceForLeague,
   matchExpertRankings,
   normaliseName,
+  expertBoardValue,
+  TIER_STEP,
+  BIG_TIER_BREAK_PENALTY,
   rankingDisagreement,
   tierGroups,
 } from '@/domain/expert-rankings';
 import { tierWindowObjective } from '@/domain/draft-strategy';
-import { QB_TIERS_2026 } from '@/data/expert-rankings';
+import { QB_TIERS_2026, TE_TIERS_2026, WR_TIERS_2026 } from '@/data/expert-rankings';
 import { DEFAULT_LEAGUE_CONFIG } from '@/domain/league-config';
 import type { LeagueConfig, Player } from '@/domain/types';
 import type { ValuedPlayer } from '@/domain/valuation';
@@ -238,5 +241,51 @@ describe('tierWindowObjective — two QBs by end of tier 3', () => {
     });
     expect(objective.owned).toBe(0);
     expect(objective.status).not.toBe('DONE');
+  });
+});
+
+describe('expertBoardValue', () => {
+  it('scores his number one at the top of the scale', () => {
+    const bowers = TE_TIERS_2026.players.find((p) => p.rank === 1)!;
+    expect(expertBoardValue(TE_TIERS_2026, bowers).value).toBe(100);
+  });
+
+  it('orders players inside a tier without letting one overtake the tier above', () => {
+    const [first, second, third] = [1, 2, 3].map(
+      (rank) => expertBoardValue(TE_TIERS_2026, TE_TIERS_2026.players.find((p) => p.rank === rank)!).value,
+    );
+    expect(first).toBeGreaterThan(second!);
+    expect(second).toBeGreaterThan(third!);
+
+    // Warren is tier 1b — still tier 1, so still ahead of everyone in tier 2 and below.
+    const warren = expertBoardValue(TE_TIERS_2026, TE_TIERS_2026.players.find((p) => p.rank === 4)!).value;
+    const fannin = expertBoardValue(TE_TIERS_2026, TE_TIERS_2026.players.find((p) => p.rank === 5)!).value;
+    expect(warren).toBeGreaterThan(fannin);
+  });
+
+  it('charges an extra drop to everyone below a Big Tier Break', () => {
+    // Fannin is tier 2 and sits below the break; LaPorta is tier 3 and below it too.
+    // The break costs Fannin a drop that a plain tier step would not.
+    const warren = expertBoardValue(TE_TIERS_2026, TE_TIERS_2026.players.find((p) => p.rank === 4)!).value;
+    const fannin = expertBoardValue(TE_TIERS_2026, TE_TIERS_2026.players.find((p) => p.rank === 5)!).value;
+    expect(warren - fannin).toBeGreaterThan(TIER_STEP);
+
+    const explain = expertBoardValue(TE_TIERS_2026, TE_TIERS_2026.players.find((p) => p.rank === 5)!);
+    expect(explain.inputs.bigTierBreaksAbove).toBe(1);
+    expect(explain.inputs.breakDrop).toBe(BIG_TIER_BREAK_PENALTY);
+  });
+
+  it('says in its derivation that the cross-positional comparison is ours, not his', () => {
+    const chase = WR_TIERS_2026.players.find((p) => p.rank === 2)!;
+    expect(expertBoardValue(WR_TIERS_2026, chase).formula).toMatch(
+      /positional, so comparing him across positions is this app/i,
+    );
+  });
+
+  it('never goes negative for the deepest player in the longest list', () => {
+    const last = WR_TIERS_2026.players.find((p) => p.rank === 94)!;
+    const score = expertBoardValue(WR_TIERS_2026, last).value;
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThan(50);
   });
 });

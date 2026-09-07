@@ -3,6 +3,7 @@ import { DEFAULT_LEAGUE_CONFIG, picksForSlot, picksUntilNextTurn } from '@/domai
 import { recommendDraftPick, weightsForRound } from '@/domain/draft-engine';
 import { teamOnClock, teamsBetweenPicks } from '@/domain/opponent-model';
 import { buildSampleLeagueState, orderedSamplePool } from '@/providers/sample/sample-league';
+import { EXPERT_RANKING_SETS, mergedExpertRankings } from '@/data/expert-rankings';
 import type { DraftPick, LeagueConfig, LeagueState } from '@/domain/types';
 
 const config = DEFAULT_LEAGUE_CONFIG;
@@ -137,7 +138,7 @@ describe('recommendDraftPick', () => {
     const result = recommendDraftPick(state);
     const candidate = result.candidates[0]!;
     expect(candidate.explain.formula).toContain('draftScore =');
-    expect(candidate.explain.inputs).toHaveProperty('leagueValue');
+    expect(candidate.explain.inputs).toHaveProperty('expertValue');
     expect(candidate.explain.inputs).toHaveProperty('rosterFit');
   });
 
@@ -172,5 +173,98 @@ describe('recommendDraftPick', () => {
     expect(result.bestPick).not.toBeNull();
     expect(result.safeAlternative).not.toBeNull();
     expect(result.bestValue).not.toBeNull();
+  });
+});
+
+/**
+ * A pool of real names, so the expert sets actually match.
+ *
+ * The sample league's players are deliberately synthetic, which means it cannot exercise
+ * name matching at all — the bug this covers hid behind exactly that.
+ */
+function realNameState(): LeagueState {
+  const state = buildSampleLeagueState();
+  const named: Array<[string, LeagueState['players'][number]['position']]> = [
+    ['Josh Allen', 'QB'], ['Lamar Jackson', 'QB'], ['Jayden Daniels', 'QB'], ['Joe Burrow', 'QB'],
+    ['Jahmyr Gibbs', 'RB'], ['Bijan Robinson', 'RB'], ['Saquon Barkley', 'RB'], ['Breece Hall', 'RB'],
+    ['Puka Nacua', 'WR'], ["Ja'Marr Chase", 'WR'], ['Justin Jefferson', 'WR'], ['CeeDee Lamb', 'WR'],
+    ['Brock Bowers', 'TE'], ['Trey McBride', 'TE'], ['Sam LaPorta', 'TE'], ['Travis Kelce', 'TE'],
+  ];
+
+  state.players = named.map(([name, position], index) => ({
+    id: `real-${index}`,
+    name,
+    position,
+    status: 'ACTIVE' as const,
+    source: 'test',
+    asOf: 'now',
+  }));
+  // Two players he ranks no one at: a kicker and a defence.
+  state.players.push(
+    { id: 'k-1', name: 'Some Kicker', position: 'K', status: 'ACTIVE', source: 'test', asOf: 'now' },
+    { id: 'd-1', name: 'Some Defense', position: 'DST', status: 'ACTIVE', source: 'test', asOf: 'now' },
+  );
+
+  state.seasonProjections = state.players.map((player) => ({
+    playerId: player.id,
+    season: 2026,
+    source: 'test',
+    asOf: 'now',
+    stats: { receptions: 60, recYards: 800, recTd: 5, rushYards: 200, rushTd: 2 },
+  }));
+
+  // The sample league carries no rankings; the service layer attaches them in the real
+  // app, so the fixture does the same.
+  state.expertRankings = mergedExpertRankings() ?? undefined;
+  state.expertRankingSets = EXPERT_RANKING_SETS;
+
+  for (const team of state.teams) team.roster = [];
+  state.draft = { picks: [], currentOverall: 1, draftOrder: state.teams.map((t) => t.id), complete: false };
+  return state;
+}
+
+describe('the ranker drives the board', () => {
+  it('carries his view for every ranked player in the pool, not just the shortlist', () => {
+    const result = recommendDraftPick(realNameState(), { limit: 12 });
+    // 16 ranked players are in the pool; the shortlist is 12. Before this, only the
+    // shortlisted players carried a tier and the rest of the board showed a dash.
+    expect(result.expertByPlayerId.size).toBe(16);
+    expect(result.expertByPlayerId.size).toBeGreaterThan(result.candidates.length);
+  });
+
+  it('counts the players he has not ranked instead of hiding them', () => {
+    const result = recommendDraftPick(realNameState(), { limit: 12 });
+    expect(result.unrankedAvailable).toBe(2); // the kicker and the defence
+  });
+
+  it('takes candidate value from his tiers, not from our projections', () => {
+    const result = recommendDraftPick(realNameState(), { limit: 18 });
+
+    // Every projection in this fixture is identical, so any spread in value can only
+    // have come from his rankings.
+    const ranked = result.candidates.filter((c) => c.expertRanked);
+    expect(ranked.length).toBeGreaterThan(4);
+    expect(new Set(ranked.map((c) => c.value)).size).toBeGreaterThan(1);
+
+    for (const candidate of ranked) {
+      expect(candidate.valueExplain).not.toBeNull();
+      expect(candidate.valueExplain!.sources.some((s) => s.startsWith('expert-rankings'))).toBe(true);
+    }
+  });
+
+  it('scores a player he has not ranked at zero rather than falling back to our numbers', () => {
+    const result = recommendDraftPick(realNameState(), { limit: 20 });
+    const kicker = result.candidates.find((c) => c.player.player.position === 'K');
+    expect(kicker).toBeDefined();
+    expect(kicker!.expertRanked).toBe(false);
+    expect(kicker!.value).toBe(0);
+    expect(kicker!.valueExplain).toBeNull();
+    expect(kicker!.explain.formula).toContain('unranked by him');
+  });
+
+  it('names the expert rankings as the source of the score, not the projections', () => {
+    const result = recommendDraftPick(realNameState(), { limit: 5 });
+    expect(result.candidates[0]!.explain.sources).toContain('expert-rankings');
+    expect(result.candidates[0]!.explain.sources).not.toContain('projections');
   });
 });

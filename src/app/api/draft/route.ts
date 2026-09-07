@@ -145,6 +145,27 @@ export async function POST(request: Request) {
     { injuries: state.injuries },
   );
 
+  /**
+   * Board order is his, not ours.
+   *
+   * He publishes positional lists and no overall board, so the cross-positional order
+   * here is his tier structure applied by the app (see expertBoardValue) — not a ranking
+   * he made. Players he has not ranked keep a stable order behind those he has, rather
+   * than being dropped: they are still draftable, we just have nothing of his to say
+   * about them.
+   */
+  const boardOrder = [...availableValuation.players].sort((a, b) => {
+    const ra = recommendation.expertByPlayerId.get(a.player.id);
+    const rb = recommendation.expertByPlayerId.get(b.player.id);
+    if (ra && !rb) return -1;
+    if (!ra && rb) return 1;
+    if (ra && rb) {
+      if (ra.tier !== rb.tier) return ra.tier - rb.tier;
+      return ra.rank - rb.rank;
+    }
+    return a.player.name.localeCompare(b.player.name);
+  });
+
   const onClockTeamId = teamOnClock(state.config, draftOrder, draft.currentOverall);
   const onClockTeam = teams.find((team) => team.id === onClockTeamId);
 
@@ -232,20 +253,28 @@ export async function POST(request: Request) {
           unfilledSlots: recommendation.myNeeds.unfilledSlots,
         }
       : null,
-    availablePlayers: availableValuation.players.map((valued) => ({
+    /**
+     * The big board.
+     *
+     * Ordered by the ranker's tiers rather than by our projections, and carrying his view
+     * for every player rather than only for the twelve on the shortlist. Our own
+     * projected points, league value and VOR are deliberately not sent: they were the
+     * numbers the board was being read on, and they are not the evidence this league
+     * wants to draft from.
+     */
+    availablePlayers: boardOrder.map((valued) => ({
       id: valued.player.id,
       name: valued.player.name,
       position: valued.player.position,
       nflTeam: valued.player.nflTeam ?? null,
       byeWeek: valued.player.byeWeek ?? null,
       status: valued.player.status,
-      projectedPoints: valued.projectedPoints,
-      leagueValue: valued.leagueValue,
-      vor: valued.vor,
-      positionRank: valued.positionRank,
-      overallRank: valued.overallRank,
-      tier: valued.tier ?? null,
+      expert: recommendation.expertByPlayerId.get(valued.player.id) ?? null,
     })),
+    board: {
+      rankedAvailable: boardOrder.length - recommendation.unrankedAvailable,
+      unrankedAvailable: recommendation.unrankedAvailable,
+    },
     rosters: teams.map((team) => ({
       id: team.id,
       name: team.name,

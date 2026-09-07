@@ -1,4 +1,5 @@
 import { explained, type Explained } from './explain';
+import { round2 } from './scoring';
 import type { LeagueConfig, Player, Position, ScoringRules } from './types';
 import type { ValuedPlayer } from './valuation';
 
@@ -214,4 +215,65 @@ export function isBigTierBreakAfter(
   ranking: ExpertRankedPlayer,
 ): boolean {
   return (rankings.bigTierBreakAfterRanks ?? []).includes(ranking.rank);
+}
+
+export const TIER_STEP = 12;
+export const BIG_TIER_BREAK_PENALTY = 10;
+
+/**
+ * A 0-100 board value for a ranked player, built only from the ranker's own structure.
+ *
+ * This exists because his lists are *positional* — QB1..36, RB1..91 and so on — and he
+ * publishes no overall board. Something has to decide whether his RB6 or his WR9 is the
+ * better pick, and the only non-fabricated way to do it is to use the structure he did
+ * publish: the tier number, and the Big Tier Breaks he places to mark a genuine cliff as
+ * opposed to an ordinary tier boundary.
+ *
+ * So tier is treated as the cross-positional unit, a Big Tier Break costs an extra drop
+ * on top of the tier step, and rank orders players inside a tier. That is an app decision
+ * and is labelled as one wherever it is shown — he did not rank his RB6 against his WR9,
+ * and this must never be presented as though he had.
+ */
+export function expertBoardValue(
+  rankings: ExpertRankingSet,
+  ranking: ExpertRankedPlayer,
+): Explained<number> {
+  const samePosition = rankings.players
+    .filter((entry) => entry.position === ranking.position)
+    .sort((a, b) => a.rank - b.rank);
+
+  const inTier = samePosition.filter((entry) => entry.tier === ranking.tier);
+  const indexInTier = Math.max(0, inTier.findIndex((entry) => entry.rank === ranking.rank));
+  const breaksAbove = (rankings.bigTierBreakAfterRanks ?? []).filter(
+    (rank) => rank < ranking.rank,
+  ).length;
+
+  const tierDrop = (ranking.tier - 1) * TIER_STEP;
+  const breakDrop = breaksAbove * BIG_TIER_BREAK_PENALTY;
+  // Spread players across half a tier step so rank orders within a tier without ever
+  // letting a late tier-2 player overtake an early tier-3 one.
+  const withinTierDrop =
+    inTier.length > 1 ? (indexInTier / (inTier.length - 1)) * (TIER_STEP / 2) : 0;
+
+  const score = round2(Math.max(0, Math.min(100, 100 - tierDrop - breakDrop - withinTierDrop)));
+
+  return explained(
+    score,
+    {
+      tier: ranking.tier,
+      rank: ranking.rank,
+      indexInTier,
+      tierSize: inTier.length,
+      bigTierBreaksAbove: breaksAbove,
+      tierDrop,
+      breakDrop,
+      withinTierDrop: round2(withinTierDrop),
+    },
+    `${ranking.position}${ranking.rank}, his tier ${ranking.tier}: 100 − ${tierDrop} (tier) ` +
+      `− ${breakDrop} (${breaksAbove} Big Tier Break${breaksAbove === 1 ? '' : 's'} above him) ` +
+      `− ${round2(withinTierDrop)} (${indexInTier + 1} of ${inTier.length} in the tier) = ${score}. ` +
+      `His lists are positional, so comparing him across positions is this app applying his ` +
+      `tier structure, not a ranking he published.`,
+    [`expert-rankings:${rankings.source}`],
+  );
 }
