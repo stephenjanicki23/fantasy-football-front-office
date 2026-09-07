@@ -159,8 +159,30 @@ export function computeFormatAdjustment(
   }
 
   const moved = [...shifts.values()].filter((entry) => entry.shift !== 0);
-  const biggestFallers = [...shifts.values()].sort((a, b) => a.shift - b.shift).slice(0, 3);
-  const biggestRisers = [...shifts.values()].sort((a, b) => b.shift - a.shift).slice(0, 3);
+  // Only genuine movers belong on these lists. Padding them to three with players who did
+  // not move reads as "Bowers is underrated here (+0)", which says the opposite of the truth.
+  const biggestFallers = moved.filter((e) => e.shift < 0).sort((a, b) => a.shift - b.shift).slice(0, 3);
+  const biggestRisers = moved.filter((e) => e.shift > 0).sort((a, b) => b.shift - a.shift).slice(0, 3);
+
+  // Nothing was scored: the rankings could not be joined to the player pool at all. Saying
+  // "moves 0 of 0 players" would read as "the format makes no difference", which is a
+  // finding we have not made.
+  if (shifts.size === 0) {
+    return {
+      shifts,
+      applies: true,
+      summary:
+        'These rankings were built for different scoring, but none of the ranked players ' +
+        'could be matched to a projection, so the translation could not be computed. ' +
+        'Positions are shown on the ranker’s published order, untranslated.',
+      unprojected,
+    };
+  }
+
+  const namesFor = (entries: FormatShift[], sign: '' | '+') =>
+    entries.length === 0
+      ? 'nobody'
+      : entries.map((entry) => `${entry.name} (${sign}${entry.shift})`).join(', ');
 
   return {
     shifts,
@@ -168,8 +190,8 @@ export function computeFormatAdjustment(
     summary:
       `These rankings were built for different scoring. Re-scoring the same projections under this league moves ` +
       `${moved.length} of ${shifts.size} ranked players. Most overrated here: ` +
-      `${biggestFallers.map((entry) => `${entry.name} (${entry.shift})`).join(', ')}. Most underrated here: ` +
-      `${biggestRisers.map((entry) => `${entry.name} (+${entry.shift})`).join(', ')}.`,
+      `${namesFor(biggestFallers, '')}. Most underrated here: ` +
+      `${namesFor(biggestRisers, '+')}.`,
     unprojected,
   };
 }

@@ -173,18 +173,31 @@ export function rankingDisagreement(
  *
  * A ranker's superflex advice is noise in a one-QB league and vice versa, so guidance is
  * tagged by the format it applies to and only shown where it is relevant.
+ *
+ * Which format a line *addresses* is not the same as which formats it *mentions*. Several
+ * of his superflex instructions name the one-QB league only as the thing being contrasted
+ * against — "in superflex, wait longer on TE than you would in a one-QB league" is advice
+ * for this league, not for that one. So a line claimed by both is resolved in favour of
+ * the format it opens by naming, and only a line that names one format is treated as
+ * belonging solely to it.
  */
 export function guidanceForLeague(
   rankings: ExpertRankingSet,
   config: LeagueConfig,
 ): string[] {
   const superflex = config.lineup.QB >= 2 || config.lineup.SUPERFLEX > 0;
+  const superflexPattern = /superflex|two-qb|2-qb/i;
+  const singleQbPattern = /single-qb|one-qb/i;
+
   return rankings.guidance.filter((line) => {
-    const isSuperflexNote = /superflex|two-qb|2-qb/i.test(line);
-    const isSingleQbNote = /single-qb|one-qb/i.test(line);
-    if (isSuperflexNote && !superflex) return false;
-    if (isSingleQbNote && superflex) return false;
-    return true;
+    const superflexAt = line.search(superflexPattern);
+    const singleQbAt = line.search(singleQbPattern);
+    if (superflexAt < 0 && singleQbAt < 0) return true;
+
+    // Whichever format the line names first is the one it is addressed to.
+    const addressesSuperflex =
+      superflexAt >= 0 && (singleQbAt < 0 || superflexAt < singleQbAt);
+    return addressesSuperflex === superflex;
   });
 }
 

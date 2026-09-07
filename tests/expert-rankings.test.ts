@@ -75,6 +75,19 @@ describe('normaliseName', () => {
   it('does not collapse genuinely different names', () => {
     expect(normaliseName('Josh Allen')).not.toBe(normaliseName('Keenan Allen'));
   });
+
+  it('reconciles the TE transcriptions with ESPN spelling', () => {
+    // ESPN spelling on the left, the form transcribed from the tiers on the right.
+    const pairs: Array<[string, string]> = [
+      ['Harold Fannin Jr.', 'Harold Fannin'],
+      ['Oronde Gadsden II', 'Oronde Gadsden'],
+      ['A.J. Barner', 'AJ Barner'],
+      ['Ja\u2019Tavion Sanders', "Ja'Tavion Sanders"],
+    ];
+    for (const [espn, ours] of pairs) {
+      expect([espn, normaliseName(espn)]).toEqual([espn, normaliseName(ours)]);
+    }
+  });
 });
 
 describe('matchExpertRankings', () => {
@@ -116,7 +129,19 @@ describe('guidanceForLeague', () => {
   it('shows superflex guidance in a 2-QB league and hides one-QB guidance', () => {
     const lines = guidanceForLeague(QB_TIERS_2026, DEFAULT_LEAGUE_CONFIG);
     expect(lines.some((l) => /superflex/i.test(l))).toBe(true);
-    expect(lines.some((l) => /one-QB league/i.test(l))).toBe(false);
+    expect(lines.some((l) => l.startsWith('In a one-QB league'))).toBe(false);
+  });
+
+  it('keeps superflex advice that names the one-QB league only as a contrast', () => {
+    // "In superflex, wait longer on TE than you would in a one-QB league" is advice for
+    // this league. Dropping it because it mentions the other format loses two of his
+    // superflex instructions in exactly the league they were written for.
+    const lines = guidanceForLeague(QB_TIERS_2026, DEFAULT_LEAGUE_CONFIG);
+    expect(lines.some((l) => /wait longer on TE/i.test(l))).toBe(true);
+    expect(lines.some((l) => /a bust hurts far more/i.test(l))).toBe(true);
+
+    const oneQbLines = guidanceForLeague(QB_TIERS_2026, oneQb);
+    expect(oneQbLines.some((l) => /wait longer on TE/i.test(l))).toBe(false);
   });
 
   it('hides superflex guidance in a 1-QB league', () => {

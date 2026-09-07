@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { computeFormatAdjustment, scoringDiffers } from '@/domain/format-adjustment';
 import { DEFAULT_LEAGUE_CONFIG } from '@/domain/league-config';
-import { RB_TIERS_2026, QB_TIERS_2026, WR_TIERS_2026 } from '@/data/expert-rankings';
-import { isBigTierBreakAfter } from '@/domain/expert-rankings';
+import { RB_TIERS_2026, QB_TIERS_2026, WR_TIERS_2026, TE_TIERS_2026 } from '@/data/expert-rankings';
+import { isBigTierBreakAfter, guidanceForLeague } from '@/domain/expert-rankings';
 import type { ExpertRankedPlayer } from '@/domain/expert-rankings';
 import type { Player, Projection } from '@/domain/types';
 
@@ -109,6 +109,23 @@ describe('computeFormatAdjustment', () => {
   });
 });
 
+describe('format summary does not overstate what it found', () => {
+  it('says the translation could not be computed when nothing matched a projection', () => {
+    const result = computeFormatAdjustment(
+      config,
+      TE_TIERS_2026.players,
+      new Map(),
+      [],
+      [],
+      TE_TIERS_2026.sourceScoring,
+    );
+    expect(result.applies).toBe(true);
+    expect(result.shifts.size).toBe(0);
+    expect(result.summary).toMatch(/could not be computed/);
+    expect(result.summary).not.toMatch(/moves 0 of 0/);
+  });
+});
+
 describe('bundled ranking sets declare their scoring', () => {
   it('marks the RB tiers as full PPR, which differs from this league', () => {
     expect(RB_TIERS_2026.sourceScoring?.receptionPoints).toBe(1);
@@ -189,12 +206,64 @@ describe('WR_TIERS_2026 integrity', () => {
   });
 });
 
+describe('TE_TIERS_2026 integrity', () => {
+  it('has 50 players with contiguous ranks', () => {
+    const ranks = TE_TIERS_2026.players.map((p) => p.rank).sort((a, b) => a - b);
+    expect(ranks).toEqual(Array.from({ length: 50 }, (_, i) => i + 1));
+  });
+
+  it('preserves the published sub-tiers in order', () => {
+    const seen: string[] = [];
+    for (const player of [...TE_TIERS_2026.players].sort((a, b) => a.rank - b.rank)) {
+      if (seen[seen.length - 1] !== player.subTier) seen.push(player.subTier!);
+    }
+    expect(seen).toEqual(['1a', '1b', '2', '3', '4', '5']);
+  });
+
+  it('records the single Big Tier Break after the top four', () => {
+    expect(TE_TIERS_2026.bigTierBreakAfterRanks).toEqual([4]);
+  });
+
+  it('is full PPR, so it needs translating for this league', () => {
+    expect(scoringDiffers(TE_TIERS_2026.sourceScoring!, config.scoring)).toBe(true);
+  });
+
+  it('marks all four players ahead of the break as stated Targets, and nobody else', () => {
+    const designated = TE_TIERS_2026.players.filter((p) => p.designation);
+    expect(designated.map((p) => p.name)).toEqual([
+      'Brock Bowers',
+      'Trey McBride',
+      'Colston Loveland',
+      'Tyler Warren',
+    ]);
+    expect(designated.every((p) => p.designation === 'TARGET')).toBe(true);
+    expect(designated.every((p) => p.designationBasis === 'stated')).toBe(true);
+  });
+
+  it('records no Fades, since he says explicitly he is not calling tier 3 a Fade tier', () => {
+    expect(TE_TIERS_2026.players.some((p) => p.designation === 'FADE')).toBe(false);
+  });
+
+  it('surfaces the Great or Late guidance and its superflex caveat in this 2-QB league', () => {
+    const guidance = guidanceForLeague(TE_TIERS_2026, config);
+    expect(guidance.some((line) => /great or late/i.test(line))).toBe(true);
+    expect(guidance.some((line) => /superflex/i.test(line))).toBe(true);
+  });
+});
+
 describe('big tier breaks', () => {
   it('flags the cliff after the exact player, not the tier generally', () => {
     const nacua = WR_TIERS_2026.players.find((p) => p.rank === 12)!;
     const notCliff = WR_TIERS_2026.players.find((p) => p.rank === 11)!;
     expect(isBigTierBreakAfter(WR_TIERS_2026, nacua)).toBe(true);
     expect(isBigTierBreakAfter(WR_TIERS_2026, notCliff)).toBe(false);
+  });
+
+  it('puts the TE cliff after Warren, not after the three above him', () => {
+    const warren = TE_TIERS_2026.players.find((p) => p.rank === 4)!;
+    const loveland = TE_TIERS_2026.players.find((p) => p.rank === 3)!;
+    expect(isBigTierBreakAfter(TE_TIERS_2026, warren)).toBe(true);
+    expect(isBigTierBreakAfter(TE_TIERS_2026, loveland)).toBe(false);
   });
 
   it('records the RB cliff after Gibbs alone', () => {

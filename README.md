@@ -53,19 +53,22 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   an 8-team league takes more rounds to consume it, while Q2/Q3 track starting slots
   because positional supply scales with team count. Two starting QB slots stretch Q1 and
   move QB out of its usual Q3 window.
-- **Expert tiers** — a ranker's published tiers, attributed and dated, shown alongside
-  the projections rather than replacing them: tier, positional rank, FADE/TARGET labels,
+- **Expert tiers** — a ranker's published tiers for all four positions (36 QB, 91 RB,
+  94 WR, 50 TE), attributed and dated, shown alongside the projections rather than
+  replacing them: tier, positional rank, FADE/TARGET labels,
   and the ranker's format-specific guidance filtered to this league. His positional
   deadlines are tracked live against remaining supply — "two QBs by the end of Tier 3"
   reports whether the window is open, closing or gone. Rankings that cannot be matched to
   the player pool are listed, never silently dropped.
 - **Scoring translation** — a ranking built for different scoring is translated rather
-  than trusted or hand-edited. The RB tiers are full PPR while this league is 0.5, so the
-  same projections are scored both ways and the ranked cohort re-ordered under each; the
-  difference isolates the format effect and is shown per player (▲/▼). Pass-catching
-  backs fall, rushing-heavy backs rise. The ranker's published ranks are never altered.
-  Applied per position: his QB tiers already match this league's passing scoring and are
-  correctly left untranslated, while his RB and WR tiers are not.
+  than trusted or hand-edited. The RB, WR and TE tiers are full PPR while this league is
+  0.5, so the same projections are scored both ways and the ranked cohort re-ordered under
+  each; the difference isolates the format effect and is shown per player (▲/▼).
+  Pass-catching backs fall, rushing-heavy backs rise. The ranker's published ranks are
+  never altered. Applied per position: his QB tiers already match this league's passing
+  scoring and are correctly left untranslated, while the other three are not. The size of
+  the correction tracks how much reception volume actually varies within a position — it
+  moves receivers most and tight ends least.
 - **Big Tier Breaks** — the ranker distinguishes a genuine cliff from an ordinary tier
   boundary, and only the cliffs are flagged on the board.
 - **Live draft tracker** — enter each pick as it happens, with player search, position
