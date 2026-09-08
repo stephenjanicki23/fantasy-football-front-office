@@ -269,3 +269,53 @@ describe('the ranker drives the board', () => {
     expect(result.candidates[0]!.explain.sources).not.toContain('projections');
   });
 });
+
+describe('his rankings drive the score all the way down', () => {
+  /**
+   * The lists do not run out. 36 QB + 91 RB + 94 WR + 50 TE is 271 ranked players against
+   * 8 x 16 = 128 picks — 2.1x the whole draft, with ~143 of his players still on the board
+   * after the last pick. Any claim that the late rounds have to fall back to projections
+   * because he has run out of players is arithmetically false, and this test says so.
+   */
+  it('ranks more than twice the players this draft can consume', () => {
+    const ranked = EXPERT_RANKING_SETS.reduce((n, set) => n + set.players.length, 0);
+    const picks = DEFAULT_LEAGUE_CONFIG.teamCount * DEFAULT_LEAGUE_CONFIG.draftRounds;
+    expect(ranked).toBe(271);
+    expect(picks).toBe(128);
+    expect(ranked).toBeGreaterThan(picks * 2);
+    // Even at the final pick, this many of his ranked players are still undrafted.
+    expect(ranked - picks).toBe(143);
+  });
+
+  it('still has his players to recommend in the last round', () => {
+    const state = realNameState();
+    // Drain the board down to the final round's worth of picks.
+    const order = state.teams.map((t) => t.id);
+    const picks = state.players.slice(0, 8).map((p, i) => ({
+      overall: i + 1, round: 1, pickInRound: i + 1, teamId: order[i % 8]!, playerId: p.id,
+    }));
+    state.draft = { ...state.draft!, picks, currentOverall: picks.length + 1 };
+
+    const result = recommendDraftPick(state, { limit: 8 });
+    expect(result.candidates.length).toBeGreaterThan(0);
+    expect(result.candidates.every((c) => c.expertRanked || c.player.player.position === 'K' || c.player.player.position === 'DST')).toBe(true);
+  });
+
+  it('takes upside from his tiers and the board, not from projections', () => {
+    const result = recommendDraftPick(realNameState(), { limit: 8 });
+    const ranked = result.candidates.filter((c) => c.expertRanked);
+    expect(ranked.length).toBeGreaterThan(0);
+    for (const candidate of ranked) {
+      expect(candidate.upside.explain.sources).toContain('draft-board');
+      expect(candidate.upside.explain.sources).not.toContain('projections');
+      expect(candidate.upside.explain.formula).toMatch(/no\s+projections and no ADP/i);
+    }
+  });
+
+  it('keeps projections out of the derivation of a ranked candidate entirely', () => {
+    const result = recommendDraftPick(realNameState(), { limit: 8 });
+    const ranked = result.candidates.find((c) => c.expertRanked)!;
+    expect(ranked.explain.sources).not.toContain('projections');
+    expect(ranked.explain.formula).toContain('Fit is measured in his board value');
+  });
+});

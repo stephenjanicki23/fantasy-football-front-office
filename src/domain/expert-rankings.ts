@@ -277,3 +277,77 @@ export function expertBoardValue(
     [`expert-rankings:${rankings.source}`],
   );
 }
+
+/** How far past his own ranking a player has to slip before that counts as a full discount. */
+export const SLIP_ROUNDS_FOR_FULL_DISCOUNT = 2;
+
+export interface ExpertUpside {
+  score: number;
+  /** His tier, normalised across the position's tiers. 1 is his top tier. */
+  ceiling: number;
+  /** How far he has lasted past his own rank on the live board, 0-1. */
+  discount: number;
+  /** Ranked players at this position already off the board. */
+  goneAtPosition: number;
+  explain: Explained<number>;
+}
+
+/**
+ * Upside from the ranker's own data and the live board — no projections, no ADP.
+ *
+ * Q4 of his framework is about ceiling at the price you are paying, and it is the quarter
+ * where upside carries the most weight. Computing it from projected points made the late
+ * rounds turn on exactly the numbers this league does not draft on, and there is no ADP
+ * source wired up to supply the price half.
+ *
+ * Both halves are available from what he published plus what has actually been drafted:
+ *
+ *  - Ceiling is his tier, normalised. Tier rather than rank on purpose: inside a tier he
+ *    is saying these players are close to equivalent, so ceiling should not discriminate
+ *    between them — that is what the value term's rank ordering is for.
+ *  - Discount is how far the player has lasted past his own rank. If 45 backs are gone and
+ *    his RB30 is still there, sixteen better-ranked backs went before him and he is going
+ *    cheap; the board supplies the price signal that ADP would have.
+ */
+export function expertUpsideFor(
+  rankings: ExpertRankingSet,
+  ranking: ExpertRankedPlayer,
+  goneAtPosition: number,
+  teamCount: number,
+): ExpertUpside {
+  const samePosition = rankings.players.filter((entry) => entry.position === ranking.position);
+  const maxTier = Math.max(...samePosition.map((entry) => entry.tier), 1);
+  const ceiling = maxTier > 1 ? (maxTier - ranking.tier) / (maxTier - 1) : 1;
+
+  const slip = goneAtPosition - (ranking.rank - 1);
+  const slipScale = Math.max(1, teamCount * SLIP_ROUNDS_FOR_FULL_DISCOUNT);
+  const discount = Math.max(0, Math.min(1, slip / slipScale));
+
+  const score = round2(100 * (0.5 * ceiling + 0.5 * discount));
+
+  return {
+    score,
+    ceiling: round2(ceiling),
+    discount: round2(discount),
+    goneAtPosition,
+    explain: explained(
+      score,
+      {
+        tier: ranking.tier,
+        maxTier,
+        ceiling: round2(ceiling),
+        rank: ranking.rank,
+        goneAtPosition,
+        slip,
+        slipScale,
+        discount: round2(discount),
+      },
+      `Ceiling ${round2(ceiling)} (his tier ${ranking.tier} of ${maxTier} at ${ranking.position}) ` +
+        `and discount ${round2(discount)} (${goneAtPosition} ranked ${ranking.position}s gone, he is ` +
+        `${ranking.position}${ranking.rank}, so he has slipped ${slip} past his own rank against a ` +
+        `${slipScale}-pick scale) → ${score}. Built from his rankings and the live board; no ` +
+        `projections and no ADP are involved.`,
+      [`expert-rankings:${rankings.source}`, 'draft-board'],
+    ),
+  };
+}

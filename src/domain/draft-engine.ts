@@ -33,6 +33,8 @@ import {
   isBigTierBreakAfter,
   matchExpertRankings,
   expertBoardValue,
+  expertUpsideFor,
+  type ExpertUpside,
   rankingDisagreement,
   type ExpertRankedPlayer,
   type ExpertRankingSet,
@@ -286,13 +288,6 @@ export function recommendDraftPick(
     for (const [playerId, shift] of adjustment.shifts) formatShifts.set(playerId, shift);
     formatSummaries.push(adjustment.summary);
   }
-  const maxMarginalGain = Math.max(
-    1,
-    ...available.slice(0, 60).map((p) =>
-      myTeam ? marginalLineupGain(config, myTeam.roster, mergeValue(valuesById, p), p) : 0,
-    ),
-  );
-
   /**
    * The ranker's view of *every* available player, not just the shortlist.
    *
@@ -330,12 +325,61 @@ export function recommendDraftPick(
     (player) => !expertByPlayerId.has(player.player.id),
   ).length;
 
+  /**
+   * How many of his ranked players at each position are already off the board.
+   *
+   * This is the price signal that replaces ADP: a player still available long after his
+   * own rank should have come and gone is being discounted by the room.
+   */
+  const availableRankedByPosition = new Map<Position, number>();
+  for (const player of available) {
+    if (!expertByPlayerId.has(player.player.id)) continue;
+    const position = player.player.position;
+    availableRankedByPosition.set(position, (availableRankedByPosition.get(position) ?? 0) + 1);
+  }
+  const goneByPosition = new Map<Position, number>();
+  for (const [position, set] of setByPosition) {
+    const total = set.players.filter((entry) => entry.position === position).length;
+    goneByPosition.set(position, total - (availableRankedByPosition.get(position) ?? 0));
+  }
+
+  /**
+   * Roster fit, measured in his currency rather than in projected points.
+   *
+   * `marginalLineupGain` asks how much a player improves your best starting lineup, and it
+   * answers in whatever unit the valuation carries. Feeding it projected points made fit a
+   * projection term; feeding it his board value asks the same structural question — which
+   * slot does this player actually improve — and answers it in his ranking.
+   */
+  const expertValuesById = new Map<string, ValuedPlayer>();
+  for (const player of fullValuation.players) {
+    const expertValue = expertValueByPlayerId.get(player.player.id)?.value ?? 0;
+    expertValuesById.set(player.player.id, { ...player, projectedPoints: expertValue });
+  }
+
+  const expertValued = (player: ValuedPlayer): ValuedPlayer =>
+    expertValuesById.get(player.player.id) ?? { ...player, projectedPoints: 0 };
+
+  const maxMarginalGain = Math.max(
+    1,
+    ...available.slice(0, 60).map((p) =>
+      myTeam
+        ? marginalLineupGain(config, myTeam.roster, mergeValue(expertValuesById, expertValued(p)), expertValued(p))
+        : 0,
+    ),
+  );
+
   const candidates: DraftCandidate[] = available.slice(0, 80).map((player) => {
     const positionScarcity = scarcity.get(player.player.position);
     const scarcityScore = positionScarcity?.score ?? 0;
 
     const marginal = myTeam
-      ? marginalLineupGain(config, myTeam.roster, mergeValue(valuesById, player), player)
+      ? marginalLineupGain(
+          config,
+          myTeam.roster,
+          mergeValue(expertValuesById, expertValued(player)),
+          expertValued(player),
+        )
       : 0;
     const rosterFit = round2(clamp((marginal / maxMarginalGain) * 100, 0, 100));
 
@@ -359,13 +403,38 @@ export function recommendDraftPick(
 
     const urgency = (1 - availability) * 100;
 
-    const upside = upsideFor(
-      player,
-      poolByPosition.get(player.player.position) ?? [player],
-      config,
-      adpByPlayer,
-      { positionSignificance: significanceByPosition.get(player.player.position) },
-    );
+    /**
+     * Upside from his rankings where he has one, projections only where he has not.
+     *
+     * Q4 weights upside at 0.50, so leaving this on projected points meant the quarter
+     * that decides your bench swings turned on the numbers this league does not draft on.
+     */
+    const ranking = rankingMatch?.byPlayerId.get(player.player.id);
+    const expertSet = ranking ? setByPosition.get(ranking.position) : undefined;
+    const expertUpside: ExpertUpside | null =
+      ranking && expertSet
+        ? expertUpsideFor(
+            expertSet,
+            ranking,
+            goneByPosition.get(player.player.position) ?? 0,
+            config.teamCount,
+          )
+        : null;
+
+    const upside = expertUpside
+      ? {
+          score: expertUpside.score,
+          tierProximity: expertUpside.ceiling,
+          marketDiscount: expertUpside.discount,
+          explain: expertUpside.explain,
+        }
+      : upsideFor(
+          player,
+          poolByPosition.get(player.player.position) ?? [player],
+          config,
+          adpByPlayer,
+          { positionSignificance: significanceByPosition.get(player.player.position) },
+        );
 
     /**
      * Value is the ranker's, not ours.
@@ -420,8 +489,12 @@ export function recommendDraftPick(
         `Q${quarter} weights — draftScore = ${weights.value}×value(${value}${expertValueExplain ? '' : ', unranked by him'}) + ${weights.scarcity}×scarcity(${scarcityScore}) + ` +
           `${weights.rosterFit}×fit(${rosterFit}) + ${weights.urgency}×urgency(${round2(urgency)}) + ` +
           `${weights.opponentDemand}×demand(${demand}) + ${weights.upside}×upside(${upside.score}) = ${draftScore}. ` +
-          `Value is ${expertValueExplain ? expertValueExplain.formula : 'zero because he has not ranked this player'}`,
-        ['expert-rankings', 'rosters', 'opponent-model', 'league-config'],
+          `Value is ${expertValueExplain ? expertValueExplain.formula : 'zero because he has not ranked this player'} ` +
+          `Upside is ${expertUpside ? 'from his tiers and how far he has slipped on this board' : 'projection-derived, because he has not ranked this player'}. ` +
+          `Fit is measured in his board value, not in projected points.`,
+        expertUpside
+          ? ['expert-rankings', 'draft-board', 'rosters', 'opponent-model', 'league-config']
+          : ['expert-rankings', 'projections', 'rosters', 'opponent-model', 'league-config'],
       ),
     };
   });

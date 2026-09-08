@@ -4,6 +4,7 @@ import {
   matchExpertRankings,
   normaliseName,
   expertBoardValue,
+  expertUpsideFor,
   TIER_STEP,
   BIG_TIER_BREAK_PENALTY,
   rankingDisagreement,
@@ -287,5 +288,49 @@ describe('expertBoardValue', () => {
     const score = expertBoardValue(WR_TIERS_2026, last).value;
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThan(50);
+  });
+});
+
+describe('expertUpsideFor', () => {
+  const wr = (rank: number) => WR_TIERS_2026.players.find((p) => p.rank === rank)!;
+
+  it('gives his top tier the full ceiling and his last tier none', () => {
+    const top = expertUpsideFor(WR_TIERS_2026, wr(1), 0, 8);
+    const bottom = expertUpsideFor(WR_TIERS_2026, wr(94), 0, 8);
+    expect(top.ceiling).toBe(1);
+    expect(bottom.ceiling).toBe(0);
+  });
+
+  it('does not discriminate inside a tier, because he says they are equivalent', () => {
+    // WR4 and WR8 are both tier 2 — same ceiling, whatever their ranks.
+    expect(expertUpsideFor(WR_TIERS_2026, wr(4), 0, 8).ceiling).toBe(
+      expertUpsideFor(WR_TIERS_2026, wr(8), 0, 8).ceiling,
+    );
+  });
+
+  it('pays no discount to a player going right where he is ranked', () => {
+    // WR30 with 29 receivers gone has slipped nowhere.
+    expect(expertUpsideFor(WR_TIERS_2026, wr(30), 29, 8).discount).toBe(0);
+    // Nor to one going early.
+    expect(expertUpsideFor(WR_TIERS_2026, wr(30), 10, 8).discount).toBe(0);
+  });
+
+  it('pays a discount to a player the room has let slide past his rank', () => {
+    const slipped = expertUpsideFor(WR_TIERS_2026, wr(30), 45, 8);
+    expect(slipped.discount).toBeGreaterThan(0);
+    // 16 past his rank on a 16-pick scale is the full discount.
+    expect(expertUpsideFor(WR_TIERS_2026, wr(30), 45, 8).discount).toBe(1);
+    expect(slipped.score).toBeGreaterThan(expertUpsideFor(WR_TIERS_2026, wr(30), 29, 8).score);
+  });
+
+  it('caps the discount rather than rewarding an absurd slide without limit', () => {
+    expect(expertUpsideFor(WR_TIERS_2026, wr(30), 200, 8).discount).toBe(1);
+  });
+
+  it('says in its derivation that no projections or ADP were involved', () => {
+    const explain = expertUpsideFor(WR_TIERS_2026, wr(30), 45, 8).explain;
+    expect(explain.formula).toMatch(/no\s+projections and no ADP/i);
+    expect(explain.sources).toContain('draft-board');
+    expect(explain.sources.some((s) => s.startsWith('expert-rankings'))).toBe(true);
   });
 });

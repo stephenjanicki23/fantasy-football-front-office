@@ -92,6 +92,23 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   wrong then every "on the clock", every simulated pick and every count of picks until your
   turn is wrong with it. You can set the order by hand; the editor swaps rather than
   overwrites, so it always stays a permutation with nobody dropped or duplicated.
+- **His rankings drive the score, not just the value term** — the six-term draft score is
+  weighted by his quarters framework, and the three terms that judge a *player* are all
+  computed from his data: value from his tiers, upside from his tier plus how far the live
+  board has let him slip past his own rank, and roster fit measured in his board value
+  rather than in projected points. The remaining terms — positional scarcity, survival to
+  your next pick, and what the teams in between need — are about supply and sequencing
+  rather than about how good a player is. That puts his rankings behind 67% of the score in
+  Q1 and Q2, 60% in Q3, and 83% in Q4, the quarter that weights upside most.
+- **Upside without ADP** — Q4 is about ceiling at the price you pay, and no ADP source is
+  wired up to supply the price. The live board supplies it instead: if 45 backs are gone
+  and his RB30 is still there, sixteen better-ranked backs went first and he is going
+  cheap. Ceiling comes from his tier rather than his rank, because inside a tier he is
+  saying the players are close to equivalent.
+- **The lists do not run out** — 36 QB + 91 RB + 94 WR + 50 TE is 271 ranked players
+  against 8 x 16 = 128 picks. That is 2.1x the entire draft, and ~143 of his ranked players
+  are still on the board after the final pick. There is no late-draft stretch where the app
+  has to fall back to projections for want of an opinion from him, and a test asserts it.
 - **TARGET / FADE, shown but not scored** — his labels are about price, not talent: a Fade
   is a player he will not pay the market rate for, and his rank already carries his opinion
   of the player. Scoring the label on top of the rank would penalise him twice on a signal
