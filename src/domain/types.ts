@@ -265,4 +265,15 @@ export interface LeagueConfig {
   playoffTeams: number;
   dynastyEnabled: boolean;
   seasonMode: 'PREDRAFT' | 'DRAFT' | 'SEASON' | 'PLAYOFFS';
+  /**
+   * How much *this* league's managers actually want a position, against how much the
+   * strategy says they should. 1 is neutral; below 1 means the room reliably lets the
+   * position slide.
+   *
+   * This is a fact about the room, not about the players. It never touches a ranking or a
+   * player's value — a quarterback is exactly as good in a league that undervalues
+   * quarterbacks, he simply lasts longer. It moves what opponents are modelled as doing
+   * and, through that, how urgently you need to act.
+   */
+  positionMarketBias?: Partial<Record<Position, number>>;
 }

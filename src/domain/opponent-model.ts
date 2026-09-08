@@ -73,8 +73,18 @@ export function predictNextPick(
     const roundsLeft = config.draftRounds - round;
     const positionalGate = lateOnly && roundsLeft > 2 ? 0.02 : 1;
 
+    /**
+     * What this particular room does with the position.
+     *
+     * A league that reliably lets quarterbacks slide is a fact about the managers, not
+     * about the quarterbacks, and it belongs here rather than anywhere near a valuation:
+     * it changes when a player comes off the board, which changes how long you can wait.
+     */
+    const marketBias = config.positionMarketBias?.[position] ?? 1;
+
     const weight =
       positionalGate *
+      marketBias *
       Math.max(
         0.0001,
         needWeight * (0.7 * need + 0.3 * scarcityScore) + valueWeight * valueSignal,

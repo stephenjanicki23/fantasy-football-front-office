@@ -164,8 +164,22 @@ export function simulateDraft(
       break;
     }
 
-    const index = weightedChoice(rng, shortlist.length, spread);
-    const chosen = shortlist[index]!;
+    /**
+     * Simulated teams draft with this room's taste, not the strategy's.
+     *
+     * The shortlist comes from the same engine that advises you, which ranks by the
+     * strategy. If the league reliably lets a position slide, its teams have to be
+     * modelled doing that or the mock hands you a draft you will never actually sit in.
+     * Only the ordering of an opponent's shortlist moves; no player's value changes.
+     */
+    const biased = [...shortlist].sort(
+      (a, b) =>
+        b.draftScore * (config.positionMarketBias?.[b.player.player.position] ?? 1) -
+        a.draftScore * (config.positionMarketBias?.[a.player.player.position] ?? 1),
+    );
+
+    const index = weightedChoice(rng, biased.length, spread);
+    const chosen = biased[index]!;
     const player = chosen.player.player;
 
     const pick: SimulatedPick = {

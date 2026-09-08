@@ -112,6 +112,16 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   against 8 x 16 = 128 picks. That is 2.1x the entire draft, and ~143 of his ranked players
   are still on the board after the final pick. There is no late-draft stretch where the app
   has to fall back to projections for want of an opinion from him, and a test asserts it.
+- **What this room does, kept apart from what players are worth** — this league
+  under-drafts quarterbacks for a 2-QB league, which is a fact about its managers that no
+  ranking set can know and only its manager can report. It is modelled as a positional
+  market bias (`positionMarketBias`, QB at 0.90) that moves two things and nothing else:
+  what opponents are predicted to do, and what simulated teams actually pick. It never
+  touches a ranking, a tier or a board value — a quarterback is exactly as good in a room
+  that undervalues quarterbacks, he simply lasts longer, and lasting longer is something
+  you profit from by waiting rather than by thinking less of him. A test asserts that
+  changing the bias leaves every player's value, tier and rank identical. The setting was
+  picked from a sweep of 12 seeded mocks per value, tabulated in `league-config.ts`.
 - **TARGET / FADE, shown but not scored** — his labels are about price, not talent: a Fade
   is a player he will not pay the market rate for, and his rank already carries his opinion
   of the player. Scoring the label on top of the rank would penalise him twice on a signal

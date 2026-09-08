@@ -47,6 +47,40 @@ export const DEFAULT_SCORING: ScoringRules = {
   ],
 };
 
+/**
+ * What this room does, as opposed to what the strategy says it should.
+ *
+ * This league under-drafts quarterbacks for a two-QB league — reported by its own manager,
+ * which is the only source there is for it and the kind of thing no ranking set can know.
+ *
+ * It is a fact about the managers, not the players. Nothing here touches a ranking or a
+ * value: a quarterback is exactly as good in a room that undervalues quarterbacks, he
+ * simply lasts longer, and lasting longer is something you can profit from by waiting.
+ * It moves two things only — what opponents are modelled as doing, and what simulated
+ * teams actually pick.
+ *
+ * Chosen from a sweep of 12 seeded mock drafts per setting, mean pick over those seeds:
+ *
+ *   bias   QBs in first 48   QB1    QB2    RB6    WR6
+ *   1.00        13.4          1.5    5.4   26.0   19.4
+ *   0.95        13.3          3.8    6.3   24.9   17.3
+ *   0.90        12.4          5.8    9.3   23.3   16.2   <- set here
+ *   0.85        11.3         10.2   13.4   22.1   13.9
+ *   0.80        10.7         14.0   15.9   22.4   12.4
+ *   0.70         9.9         14.8   20.4   20.4   12.5
+ *
+ * 0.90 is the slight end of that on purpose. It keeps the elite quarterback going in round
+ * one, where he goes even in a room that undervalues the position, while taking one QB out
+ * of the first 48 picks and handing you his RB6 about three picks earlier. Below about
+ * 0.85 the best quarterback starts sliding out of round one entirely, which is a different
+ * claim about this league than the one that was made.
+ *
+ * Set an entry to 1 to model a position as going exactly when the strategy expects.
+ */
+export const DEFAULT_POSITION_MARKET_BIAS: Partial<Record<Position, number>> = {
+  QB: 0.9,
+};
+
 /** Target league: 8 teams, 2 QB, 0.5 PPR, FAAB. */
 export const DEFAULT_LINEUP: LineupRequirements = {
   QB: 2,
@@ -79,6 +113,7 @@ export const DEFAULT_LEAGUE_CONFIG: LeagueConfig = {
   playoffTeams: 4,
   dynastyEnabled: false,
   seasonMode: 'PREDRAFT',
+  positionMarketBias: DEFAULT_POSITION_MARKET_BIAS,
 };
 
 // ---------------------------------------------------------------------------
