@@ -180,6 +180,45 @@ export class EspnProvider implements LeagueProvider {
     return { ...result, data: players };
   }
 
+  /**
+   * The whole draftable pool, ownership ignored.
+   *
+   * `getFreeAgents` filters on `filterStatus: ['FREEAGENT', 'WAIVERS']`, which is right
+   * in season and wrong before a draft: in an undrafted league nobody holds that status
+   * and every roster is empty, so the app's entire player pool came back empty and every
+   * module on the draft page rendered with nothing in it. Dropping the status filter and
+   * sorting by percent owned returns the top `limit` players whether or not they are
+   * owned, which is what a draft board is.
+   */
+  async getPlayerPool(limit = 400): Promise<ProviderResult<Player[]>> {
+    if (!this.credentials) return this.notConfigured();
+
+    const result = await espnFetch<{ players?: Array<{ player?: EspnPlayer }> }>(
+      leagueUrl(this.credentials),
+      this.credentials,
+      {
+        views: ['kona_player_info'],
+        cacheTtlMs: TTL_FREE_AGENTS,
+        filter: {
+          players: {
+            limit,
+            sortPercOwned: { sortAsc: false, sortPriority: 1 },
+          },
+        },
+      },
+    );
+
+    if (!result.ok || !result.data) return { ...result, data: null } as ProviderResult<Player[]>;
+
+    const asOf = result.asOf;
+    const players = (result.data.players ?? [])
+      .map((entry) => entry.player)
+      .filter((p): p is EspnPlayer => Boolean(p))
+      .map((p) => mapPlayer(p, asOf));
+
+    return { ...result, data: players };
+  }
+
   async getSnapshot(): Promise<ProviderResult<LeagueSnapshot>> {
     if (!this.credentials) return this.notConfigured();
 

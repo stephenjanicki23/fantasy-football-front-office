@@ -73,6 +73,14 @@ export interface LeagueProvider {
   getDraftResults(): Promise<ProviderResult<DraftState>>;
   getMatchups(): Promise<ProviderResult<Matchup[]>>;
   getFreeAgents(limit?: number): Promise<ProviderResult<Player[]>>;
+  /**
+   * Every draftable player, regardless of who owns him.
+   *
+   * Distinct from `getFreeAgents` on purpose. Before a draft nobody is a free agent and
+   * every roster is empty, so a pool built from "rostered + free agents" is empty exactly
+   * when a draft assistant needs it most.
+   */
+  getPlayerPool(limit?: number): Promise<ProviderResult<Player[]>>;
   getTransactions(week?: number): Promise<ProviderResult<TransactionRecord[]>>;
   /** Everything at once, for a full sync. */
   getSnapshot(): Promise<ProviderResult<LeagueSnapshot>>;

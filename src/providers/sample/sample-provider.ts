@@ -86,6 +86,11 @@ export class SampleProvider
     return providerOk([], SAMPLE_SOURCE);
   }
 
+  /** The sample pool is already every player, owned or not. */
+  async getPlayerPool(): Promise<ProviderResult<Player[]>> {
+    return providerOk(this.state().players, SAMPLE_SOURCE);
+  }
+
   async getFreeAgents(): Promise<ProviderResult<Player[]>> {
     const state = this.state();
     const rostered = new Set(state.teams.flatMap((t) => t.roster.map((r) => r.playerId)));

@@ -73,9 +73,9 @@ export async function loadLeagueState(
 
   const { config, teams, players, draft, matchups } = snapshot.data;
 
-  const [projections, freeAgents, injuries, adp] = await Promise.all([
+  const [projections, playerPool, injuries, adp] = await Promise.all([
     providers.projections.getSeasonProjections(config.season),
-    providers.league.getFreeAgents(),
+    providers.league.getPlayerPool(),
     providers.injuries.getInjuries(),
     providers.adp.getAdp(config.season, `${config.scoring.receptionPoints}ppr-${config.lineup.QB}qb-${config.teamCount}team`),
   ]);
@@ -86,18 +86,20 @@ export async function loadLeagueState(
         'No projections are available. Screens that depend on projections will show "Data unavailable".',
     );
   }
-  if (!freeAgents.ok) {
-    warnings.push(freeAgents.message ?? 'The free-agent pool could not be loaded.');
+  if (!playerPool.ok) {
+    warnings.push(playerPool.message ?? 'The player pool could not be loaded.');
   }
 
-  // Merge rostered players with the free-agent pool, de-duplicated by id.
+  // Merge rostered players with the full draftable pool, de-duplicated by id.
   const allPlayers = [...players];
   const seen = new Set(players.map((p) => p.id));
-  for (const player of freeAgents.data ?? []) {
+  for (const player of playerPool.data ?? []) {
     if (seen.has(player.id)) continue;
     seen.add(player.id);
     allPlayers.push(player);
   }
+
+  warnings.push(...poolWarnings(config, allPlayers.length));
 
   const isSample = providers.mode === 'sample' || snapshot.source === 'synthetic-sample';
 
@@ -139,4 +141,32 @@ export async function loadLeagueState(
 export function inferCurrentWeek(matchups: LeagueState['matchups']): number {
   const completed = matchups.filter((m) => m.completed).map((m) => m.week);
   return completed.length > 0 ? Math.max(...completed) : 0;
+}
+
+/**
+ * An empty pool is the failure that looks like everything working.
+ *
+ * With projections loaded but no players, every module on the draft page renders with
+ * nothing in it and not one of them says why — no candidates, no tiers, no scarcity, all
+ * silently blank. Before a draft this is the likely shape of a misconfiguration rather
+ * than an edge case: every roster is empty, so the whole pool comes from one request.
+ */
+export function poolWarnings(config: LeagueState['config'], playerCount: number): string[] {
+  if (playerCount === 0) {
+    return [
+      'No players were returned, so every player-driven screen will be empty. Rosters are ' +
+        'empty before a draft, which means the whole pool comes from the player-pool request ' +
+        'and that request came back with nothing.',
+    ];
+  }
+
+  const picks = config.teamCount * config.draftRounds;
+  if (playerCount < picks) {
+    return [
+      `Only ${playerCount} players were returned, which is fewer than the ${picks} picks in ` +
+        'this draft. Recommendations will run out of players before the draft does.',
+    ];
+  }
+
+  return [];
 }

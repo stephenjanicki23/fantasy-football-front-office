@@ -222,6 +222,39 @@ describe('mapDraft and mapMatchups', () => {
     expect(draft.complete).toBe(true);
   });
 
+  it('reports where the draft order came from', () => {
+    expect(mapDraft(payload, ['espn-team-1', 'espn-team-2']).draftOrderSource).toBe('PICKS');
+  });
+
+  it('uses the order ESPN publishes before a draft, rather than the team order', () => {
+    // An undrafted league: no picks yet, but the league has set its slots.
+    const undrafted = {
+      ...payload,
+      draftDetail: { drafted: false, picks: [] },
+      settings: { ...payload.settings, draftSettings: { pickOrder: [2, 1] } },
+    };
+    const draft = mapDraft(undrafted, ['espn-team-1', 'espn-team-2']);
+    expect(draft.draftOrder).toEqual(['espn-team-2', 'espn-team-1']);
+    expect(draft.draftOrderSource).toBe('SETTINGS');
+  });
+
+  it('says the order is a guess when nobody has published one', () => {
+    const undrafted = { ...payload, draftDetail: { drafted: false, picks: [] }, settings: {} };
+    const draft = mapDraft(undrafted, ['espn-team-1', 'espn-team-2']);
+    expect(draft.draftOrder).toEqual(['espn-team-1', 'espn-team-2']);
+    expect(draft.draftOrderSource).toBe('FALLBACK');
+  });
+
+  it('ignores a published order that does not cover every team', () => {
+    const undrafted = {
+      ...payload,
+      draftDetail: { drafted: false, picks: [] },
+      settings: { ...payload.settings, draftSettings: { pickOrder: [2] } },
+    };
+    const draft = mapDraft(undrafted, ['espn-team-1', 'espn-team-2']);
+    expect(draft.draftOrderSource).toBe('FALLBACK');
+  });
+
   it('flags playoff matchups and completion', () => {
     const matchups = mapMatchups(payload);
     expect(matchups[0]!.completed).toBe(true);

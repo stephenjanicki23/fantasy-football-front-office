@@ -28,6 +28,26 @@ export default async function DraftPage() {
           reason="Draft recommendations need projections. Import a projection set or connect a provider first."
           lastUpdated={loaded.asOf}
         />
+        <WarningList warnings={loaded.warnings} />
+      </Card>
+    );
+  }
+
+  /**
+   * No players is the failure that looks like everything working.
+   *
+   * Every module below renders off the player pool, so with an empty pool the page comes
+   * up complete and entirely blank: no candidates, no tiers, no scarcity, no squeezes, and
+   * not one of them saying why. Stop here and say it once instead.
+   */
+  if (state.players.length === 0) {
+    return (
+      <Card title="Draft Assistant">
+        <DataUnavailable
+          reason="No players were returned, so there is nothing to rank. Before a draft every roster is empty, which means the whole board comes from the player-pool request — if that comes back empty, so does every module on this page."
+          lastUpdated={loaded.asOf}
+        />
+        <WarningList warnings={loaded.warnings} />
       </Card>
     );
   }
