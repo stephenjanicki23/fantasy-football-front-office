@@ -220,19 +220,36 @@ describe('a mock draft drafts like a draft', () => {
   };
 
   /**
-   * The reported symptom: RB6 was still on the board at pick 44 of an 8-team draft, which
-   * does not happen. He came off at 43rd on a tier-only board, so the mock was faithfully
-   * reproducing a broken ordering rather than drafting badly.
+   * Where the top backs go if the whole league drafts his way.
+   *
+   * Derived from his own rules rather than from a tuned weight, because the reported
+   * symptom was RB6 still on the board at pick 44 — he was scoring 43rd on a tier-only
+   * board, so the mock was faithfully reproducing a broken ordering.
+   *
+   * Q1 in this league is the first 48 picks (his 4-round Q1 in a 12-team framework is 48
+   * picks, which is 6 rounds across 8 teams). His rules spend those picks like this:
+   *
+   *   - 8 quarterbacks. "Taking a QB in round 1 is the only way to be certain of not
+   *     losing the game of chicken" gets each team a QB1 early, but the second only has to
+   *     land "by the end of Tier 3" — QB19 — which is still comfortably available in Q2,
+   *     so QB2s do not belong in Q1.
+   *   - 4 tight ends. The Great-or-Late Targets ahead of his Big Tier Break.
+   *   - The remaining 36 to running backs and receivers, against a supply of 26 in his
+   *     tiers 1-3 (RB 14, WR 12).
+   *
+   * Counting the non-quarterbacks his ordering puts ahead of RB6 — 4 TE, 1 RB and 3 WR in
+   * tier 1, then 3 RB and 5 WR in tier 2, then RB5 — makes him the 18th non-QB off the
+   * board. Add the ~8 quarterbacks gone by then and he lands around pick 26, in round 4.
+   * Sweeping how early the QB chicken game resolves moves that between 18 and 26.
    */
-  it('takes the top six backs long before pick 44', () => {
+  it('takes RB6 where his ideology puts him, in round 3 or 4', () => {
     const result = simulateDraft(rankedPool(), { maxPicks: 48, seed: 7 });
     const takenAt = new Map(result.picks.map((p) => [rankOf(p.playerName), p.overall]));
 
     const rb6 = takenAt.get('RB6');
     expect(rb6).toBeDefined();
-    expect(rb6!).toBeLessThan(44);
-    // Round 4 of an 8-team draft or earlier.
-    expect(rb6!).toBeLessThanOrEqual(32);
+    expect(rb6!).toBeGreaterThanOrEqual(17);
+    expect(rb6!).toBeLessThanOrEqual(30);
   });
 
   it('takes his backs roughly in his order', () => {
