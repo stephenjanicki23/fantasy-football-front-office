@@ -11,7 +11,7 @@ import {
   tierGroups,
 } from '@/domain/expert-rankings';
 import { tierWindowObjective } from '@/domain/draft-strategy';
-import { QB_TIERS_2026, TE_TIERS_2026, WR_TIERS_2026 } from '@/data/expert-rankings';
+import { QB_TIERS_2026, RB_TIERS_2026, TE_TIERS_2026, WR_TIERS_2026 } from '@/data/expert-rankings';
 import { DEFAULT_LEAGUE_CONFIG } from '@/domain/league-config';
 import type { LeagueConfig, Player } from '@/domain/types';
 import type { ValuedPlayer } from '@/domain/valuation';
@@ -332,5 +332,75 @@ describe('expertUpsideFor', () => {
     expect(explain.formula).toMatch(/no\s+projections and no ADP/i);
     expect(explain.sources).toContain('draft-board');
     expect(explain.sources.some((s) => s.startsWith('expert-rankings'))).toBe(true);
+  });
+});
+
+describe('expertBoardValue blends tier with positional rank', () => {
+  const cfg = DEFAULT_LEAGUE_CONFIG; // 8 teams, 2 QB — horizons QB 19, RB 27, WR 27, TE 11
+  const at = (set: typeof RB_TIERS_2026, rank: number) =>
+    expertBoardValue(set, set.players.find((p) => p.rank === rank)!, cfg).value;
+
+  /**
+   * The failure this blend exists to fix.
+   *
+   * On a tier-only board his RB6 scored below every one of his ten "tier 3" quarterbacks,
+   * because RB tier 3 starts at RB5 while QB tier 3 runs QB10-QB19. RB6 landed at board
+   * position 43 and was still there at pick 44 of an 8-team draft, which does not happen.
+   */
+  it('puts his RB6 ahead of his QB13, who share a tier number but not a grade', () => {
+    expect(at(RB_TIERS_2026, 6)).toBeGreaterThan(at(QB_TIERS_2026, 13));
+  });
+
+  it('puts a startable back ahead of a quarterback past this league’s QB horizon', () => {
+    // 19 QBs are usable in a 2-QB, 8-team league; 27 backs are.
+    expect(at(RB_TIERS_2026, 10)).toBeGreaterThan(at(QB_TIERS_2026, 19));
+  });
+
+  it('still lets tier win between players of similar positional standing', () => {
+    // WR4 is tier 2 and WR9 is tier 3; rank alone would barely separate them.
+    expect(at(WR_TIERS_2026, 4)).toBeGreaterThan(at(WR_TIERS_2026, 9));
+  });
+
+  it('scales rank against how deep this league goes at the position', () => {
+    const explain = expertBoardValue(
+      RB_TIERS_2026,
+      RB_TIERS_2026.players.find((p) => p.rank === 6)!,
+      cfg,
+    );
+    expect(explain.inputs.positionHorizon).toBe(27);
+    expect(explain.formula).toContain('27 RBs this league actually uses');
+
+    const qb = expertBoardValue(
+      QB_TIERS_2026,
+      QB_TIERS_2026.players.find((p) => p.rank === 6)!,
+      cfg,
+    );
+    expect(qb.inputs.positionHorizon).toBe(19);
+  });
+
+  it('falls back to tier alone rather than inventing a horizon with no config', () => {
+    const withConfig = expertBoardValue(RB_TIERS_2026, RB_TIERS_2026.players[5]!, cfg);
+    const without = expertBoardValue(RB_TIERS_2026, RB_TIERS_2026.players[5]!);
+    expect(without.inputs.positionHorizon).toBe(-1);
+    expect(without.inputs.rankScore).toBe(-1);
+    expect(without.formula).toMatch(/no league config supplied/i);
+    expect(without.value).not.toBe(withConfig.value);
+  });
+
+  it('keeps his number one at the top of every position', () => {
+    for (const set of [QB_TIERS_2026, RB_TIERS_2026, WR_TIERS_2026, TE_TIERS_2026]) {
+      expect(at(set, 1)).toBe(100);
+    }
+  });
+
+  it('still orders every position by his own rank, top to bottom', () => {
+    for (const set of [QB_TIERS_2026, RB_TIERS_2026, WR_TIERS_2026, TE_TIERS_2026]) {
+      const scores = [...set.players]
+        .sort((a, b) => a.rank - b.rank)
+        .map((p) => expertBoardValue(set, p, cfg).value);
+      for (let i = 1; i < scores.length; i++) {
+        expect(scores[i]!).toBeLessThanOrEqual(scores[i - 1]!);
+      }
+    }
   });
 });

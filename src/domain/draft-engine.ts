@@ -319,7 +319,7 @@ export function recommendDraftPick(
     if (entry) expertByPlayerId.set(player.player.id, entry);
 
     const set = setByPosition.get(ranking.position);
-    if (set) expertValueByPlayerId.set(player.player.id, expertBoardValue(set, ranking));
+    if (set) expertValueByPlayerId.set(player.player.id, expertBoardValue(set, ranking, config));
   }
   const unrankedAvailable = available.filter(
     (player) => !expertByPlayerId.has(player.player.id),

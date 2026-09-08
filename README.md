@@ -57,8 +57,11 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   (36 QB, 91 RB, 94 WR, 50 TE), attributed and dated, are what the draft board is ordered
   and scored on. The app's own projection-derived numbers are deliberately not shown or
   used there. His lists are *positional* and he published no overall board, so ordering
-  across positions applies his tier numbers and Big Tier Breaks — an app decision, labelled
-  as one on the page rather than passed off as his. A player outside his lists (kickers,
+  across positions blends his tier numbers and Big Tier Breaks with his positional rank,
+  scaled by how deep this league actually goes at that position — an app decision, labelled
+  as one on the page rather than passed off as his. Tier alone could not do it: a tier
+  number means something different at each position (his RB tier 3 starts at RB5, his QB
+  tier 3 runs QB10-QB19), so a tier-only board put his RB6 behind nineteen quarterbacks. A player outside his lists (kickers,
   defences, the deep pool) reads as `unranked` and scores zero on value; nothing of ours is
   substituted for an opinion he did not give. Each row shows his tier, positional rank and
   FADE/TARGET label, alongside his format-specific guidance filtered to this league. His positional

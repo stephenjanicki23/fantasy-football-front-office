@@ -177,3 +177,90 @@ describe('ordinal', () => {
     ]);
   });
 });
+
+/** A pool of his actual ranked names, so a mock exercises the real board ordering. */
+function rankedPool(): LeagueState {
+  const state = buildSampleLeagueState();
+  const ranked = EXPERT_RANKING_SETS.flatMap((set) => set.players);
+  state.players = ranked.map((r, i) => ({
+    id: `e-${i}`,
+    name: r.name,
+    position: r.position,
+    status: 'ACTIVE' as const,
+    source: 'espn',
+    asOf: 'now',
+  }));
+  state.seasonProjections = state.players.map((p, i) => ({
+    playerId: p.id,
+    season: 2026,
+    source: 'espn',
+    asOf: 'now',
+    stats: { receptions: 60, recYards: 800 - i, recTd: 5, rushYards: 300, rushTd: 3, passYards: 3900, passTd: 26 },
+  }));
+  for (const team of state.teams) team.roster = [];
+  state.expertRankings = mergedExpertRankings() ?? undefined;
+  state.expertRankingSets = EXPERT_RANKING_SETS;
+  state.draft = {
+    picks: [],
+    currentOverall: 1,
+    draftOrder: state.teams.map((t) => t.id),
+    draftOrderSource: 'FALLBACK',
+    complete: false,
+  };
+  return state;
+}
+
+describe('a mock draft drafts like a draft', () => {
+  const rankOf = (name: string) => {
+    for (const set of EXPERT_RANKING_SETS) {
+      const found = set.players.find((p) => p.name === name);
+      if (found) return `${found.position}${found.rank}`;
+    }
+    return name;
+  };
+
+  /**
+   * The reported symptom: RB6 was still on the board at pick 44 of an 8-team draft, which
+   * does not happen. He came off at 43rd on a tier-only board, so the mock was faithfully
+   * reproducing a broken ordering rather than drafting badly.
+   */
+  it('takes the top six backs long before pick 44', () => {
+    const result = simulateDraft(rankedPool(), { maxPicks: 48, seed: 7 });
+    const takenAt = new Map(result.picks.map((p) => [rankOf(p.playerName), p.overall]));
+
+    const rb6 = takenAt.get('RB6');
+    expect(rb6).toBeDefined();
+    expect(rb6!).toBeLessThan(44);
+    // Round 4 of an 8-team draft or earlier.
+    expect(rb6!).toBeLessThanOrEqual(32);
+  });
+
+  it('takes his backs roughly in his order', () => {
+    const result = simulateDraft(rankedPool(), { maxPicks: 48, seed: 7 });
+    const takenAt = new Map(result.picks.map((p) => [rankOf(p.playerName), p.overall]));
+    const backs = [1, 2, 3, 4, 5, 6].map((n) => takenAt.get(`RB${n}`));
+    expect(backs.every((pick) => pick !== undefined)).toBe(true);
+    // Monotonic: no better-ranked back is left behind a worse-ranked one.
+    for (let i = 1; i < backs.length; i++) {
+      expect(backs[i]!).toBeGreaterThan(backs[i - 1]!);
+    }
+  });
+
+  it('spreads the early rounds across positions instead of hoarding one', () => {
+    const result = simulateDraft(rankedPool(), { maxPicks: 48, seed: 7 });
+    const counts = new Map<string, number>();
+    for (const pick of result.picks) counts.set(pick.position, (counts.get(pick.position) ?? 0) + 1);
+
+    // 48 picks in a 2-QB league: every position represented, none running away with it.
+    for (const position of ['QB', 'RB', 'WR', 'TE']) {
+      expect(counts.get(position) ?? 0).toBeGreaterThanOrEqual(5);
+      expect(counts.get(position) ?? 0).toBeLessThanOrEqual(20);
+    }
+  });
+
+  it('has the Great or Late tight ends gone early, as his framing implies', () => {
+    const result = simulateDraft(rankedPool(), { maxPicks: 48, seed: 7 });
+    const takenAt = new Map(result.picks.map((p) => [rankOf(p.playerName), p.overall]));
+    for (const n of [1, 2, 3, 4]) expect(takenAt.get(`TE${n}`)).toBeLessThan(30);
+  });
+});

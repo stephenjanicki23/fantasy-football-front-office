@@ -1,5 +1,6 @@
 import { explained, type Explained } from './explain';
 import { round2 } from './scoring';
+import { replacementRank } from './replacement';
 import type { LeagueConfig, Player, Position, ScoringRules } from './types';
 import type { ValuedPlayer } from './valuation';
 
@@ -221,22 +222,45 @@ export const TIER_STEP = 12;
 export const BIG_TIER_BREAK_PENALTY = 10;
 
 /**
+ * How much of a player's board value comes from his tier rather than his positional rank.
+ *
+ * Tier alone used to be the whole answer, and it produced a board that put his RB6 at #43,
+ * behind nineteen quarterbacks. His tier numbers are not comparable across positions and
+ * his tier sizes differ by design: RB runs T1=1, T2=3, T3=10, so RB5 is already "tier 3",
+ * while QB runs T1=3, T2=6, T3=10, so QB10 through QB19 are "tier 3" as well. Treating
+ * those as the same grade buries genuine RB1s behind backup quarterbacks.
+ *
+ * Tier keeps the majority share, because it carries his cliff structure and the Big Tier
+ * Breaks. Rank now carries real weight alongside it.
+ */
+export const TIER_SHARE = 0.55;
+export const RANK_SHARE = 1 - TIER_SHARE;
+
+/**
  * A 0-100 board value for a ranked player, built only from the ranker's own structure.
  *
  * This exists because his lists are *positional* — QB1..36, RB1..91 and so on — and he
  * publishes no overall board. Something has to decide whether his RB6 or his WR9 is the
- * better pick, and the only non-fabricated way to do it is to use the structure he did
- * publish: the tier number, and the Big Tier Breaks he places to mark a genuine cliff as
- * opposed to an ordinary tier boundary.
+ * better pick, and the only non-fabricated way to do it is to use what he did publish:
+ * the tier, the Big Tier Breaks that mark a genuine cliff, and the rank.
  *
- * So tier is treated as the cross-positional unit, a Big Tier Break costs an extra drop
- * on top of the tier step, and rank orders players inside a tier. That is an app decision
- * and is labelled as one wherever it is shown — he did not rank his RB6 against his WR9,
- * and this must never be presented as though he had.
+ * Two ingredients, because neither works alone:
+ *
+ *  - **Tier** carries his read of where the cliffs are, and a Big Tier Break costs an extra
+ *    drop on top of the tier step. But a tier number means something different at each
+ *    position, so tier alone cannot order a board.
+ *  - **Rank**, scaled by `replacementRank` — how many of that position this league actually
+ *    consumes, starters plus flex plus bench. RB6 of 27 useful backs is a starter; QB15 of
+ *    19 useful quarterbacks is not. That scaling is what makes ranks comparable across
+ *    positions at all, and it comes from the league config, not from projections.
+ *
+ * This is still an app decision and is labelled as one wherever it is shown — he did not
+ * rank his RB6 against his WR9, and this must never be presented as though he had.
  */
 export function expertBoardValue(
   rankings: ExpertRankingSet,
   ranking: ExpertRankedPlayer,
+  config?: LeagueConfig,
 ): Explained<number> {
   const samePosition = rankings.players
     .filter((entry) => entry.position === ranking.position)
@@ -255,7 +279,21 @@ export function expertBoardValue(
   const withinTierDrop =
     inTier.length > 1 ? (indexInTier / (inTier.length - 1)) * (TIER_STEP / 2) : 0;
 
-  const score = round2(Math.max(0, Math.min(100, 100 - tierDrop - breakDrop - withinTierDrop)));
+  const tierScore = Math.max(0, Math.min(100, 100 - tierDrop - breakDrop - withinTierDrop));
+
+  /**
+   * Rank against this league's appetite for the position.
+   *
+   * With no config there is nothing to scale against, so fall back to tier alone rather
+   * than inventing a horizon: a wrong scale is worse than no scale.
+   */
+  const horizon = config ? replacementRank(config, ranking.position) : null;
+  const rankScore =
+    horizon === null ? null : 100 * Math.max(0, Math.min(1, 1 - (ranking.rank - 1) / horizon));
+
+  const score = round2(
+    rankScore === null ? tierScore : TIER_SHARE * tierScore + RANK_SHARE * rankScore,
+  );
 
   return explained(
     score,
@@ -268,13 +306,23 @@ export function expertBoardValue(
       tierDrop,
       breakDrop,
       withinTierDrop: round2(withinTierDrop),
+      tierScore: round2(tierScore),
+      rankScore: rankScore === null ? -1 : round2(rankScore),
+      positionHorizon: horizon ?? -1,
+      tierShare: TIER_SHARE,
     },
-    `${ranking.position}${ranking.rank}, his tier ${ranking.tier}: 100 − ${tierDrop} (tier) ` +
-      `− ${breakDrop} (${breaksAbove} Big Tier Break${breaksAbove === 1 ? '' : 's'} above him) ` +
-      `− ${round2(withinTierDrop)} (${indexInTier + 1} of ${inTier.length} in the tier) = ${score}. ` +
-      `His lists are positional, so comparing him across positions is this app applying his ` +
-      `tier structure, not a ranking he published.`,
-    [`expert-rankings:${rankings.source}`],
+    `${ranking.position}${ranking.rank}, his tier ${ranking.tier}. ` +
+      `Tier score ${round2(tierScore)} = 100 - ${tierDrop} (tier) - ${breakDrop} ` +
+      `(${breaksAbove} Big Tier Break${breaksAbove === 1 ? '' : 's'} above him) - ${round2(withinTierDrop)} ` +
+      `(${indexInTier + 1} of ${inTier.length} in the tier)` +
+      (rankScore === null
+        ? `. No league config supplied, so rank is not scored and tier alone gives ${score}.`
+        : `. Rank score ${round2(rankScore)} = ${ranking.position}${ranking.rank} against the ` +
+          `${horizon} ${ranking.position}s this league actually uses. Blended ` +
+          `${TIER_SHARE}/${round2(RANK_SHARE)} tier/rank = ${score}.`) +
+      ` His lists are positional, so comparing him across positions is this app applying his ` +
+      `structure, not a ranking he published.`,
+    [`expert-rankings:${rankings.source}`, 'league-config'],
   );
 }
 
