@@ -177,6 +177,7 @@ export interface InjuryReport {
  * `src/services/league-state.ts`.
  */
 // Imported lazily by type only; the ranking model lives in expert-rankings.ts.
+import type { ExpertSignalWeek } from './expert-signals';
 import type { ExpertRankingSet } from './expert-rankings';
 
 export interface LeagueState {
@@ -194,6 +195,8 @@ export interface LeagueState {
   expertRankings?: ExpertRankingSet;
   /** The sets unflattened, so each keeps the scoring it was built for. */
   expertRankingSets?: ExpertRankingSet[];
+  /** In-season Signal and Noise, newest week first. Dated opinion, never a valuation. */
+  expertSignalWeeks?: ExpertSignalWeek[];
   draft?: DraftState;
   /** Ids of players on no roster. Derived, but cached here for engine convenience. */
   currentWeek?: number;

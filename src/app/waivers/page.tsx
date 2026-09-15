@@ -11,6 +11,9 @@ import {
 } from '@/components/ui';
 import { formatMoney, formatPoints } from '@/lib/format';
 import { loadLeagueState } from '@/services/league-state';
+import { matchSignals } from '@/domain/expert-signals';
+import { latestSignals } from '@/data/expert-signals';
+import { SignalWeekPanel } from '@/components/expert-signals';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +35,25 @@ export default async function WaiversPage() {
   const report = buildWeeklyReport(state);
   const budgets = faabStatus(state.config, state.teams);
   const myTeam = state.teams.find((t) => t.isMyTeam);
+
+  /**
+   * His week split by who actually holds the player.
+   *
+   * The same note means different things depending on that: "cuttable in shallower leagues"
+   * is a decision if he is on your bench and irrelevant if he is not, and a stash call only
+   * matters while the player is still free.
+   */
+  const signalWeek = latestSignals();
+  const signalMatch = signalWeek ? matchSignals(state.players, signalWeek) : null;
+  const myPlayerIds = new Set(myTeam?.roster.map((entry) => entry.playerId) ?? []);
+  const rosteredAnywhere = new Set(state.teams.flatMap((t) => t.roster.map((r) => r.playerId)));
+
+  const mySignals = [...(signalMatch?.byPlayerId ?? new Map())]
+    .filter(([playerId]) => myPlayerIds.has(playerId))
+    .flatMap(([, entries]) => entries);
+  const freeAgentSignals = [...(signalMatch?.byPlayerId ?? new Map())]
+    .filter(([playerId]) => !rosteredAnywhere.has(playerId))
+    .flatMap(([, entries]) => entries);
 
   return (
     <>
@@ -65,6 +87,32 @@ export default async function WaiversPage() {
           </p>
         </Card>
       ) : null}
+
+      {signalWeek && (
+        <>
+          <Card
+            title={`Week ${signalWeek.week} — on your roster`}
+            subtitle="What he wrote about players you already hold. Opinion about one week of usage, not a valuation, and never a reason on its own to drop somebody."
+          >
+            <SignalWeekPanel
+              week={signalWeek}
+              entries={mySignals}
+              emptyMessage="Nothing he covered in this part of the week is on your roster."
+            />
+          </Card>
+
+          <Card
+            title={`Week ${signalWeek.week} — free agents he flagged`}
+            subtitle="Players nobody in this league rosters who turned up in his Signal or Noise lists."
+          >
+            <SignalWeekPanel
+              week={signalWeek}
+              entries={freeAgentSignals}
+              emptyMessage="Everyone he covered in this part of the week is already rostered in your league."
+            />
+          </Card>
+        </>
+      )}
 
       <Card title="Waiver targets" subtitle="Ranked by what they add to YOUR roster, not by raw value">
         {report.waiverTargets.length === 0 ? (

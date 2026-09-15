@@ -10,6 +10,9 @@ import {
 } from '@/components/ui';
 import { formatPoints } from '@/lib/format';
 import { loadLeagueState } from '@/services/league-state';
+import { matchSignals } from '@/domain/expert-signals';
+import { latestSignals } from '@/data/expert-signals';
+import { SignalWeekPanel } from '@/components/expert-signals';
 import type { Position } from '@/domain/types';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +38,9 @@ export default async function PlayersPage() {
     injuries: state.injuries,
   });
   const tiers = buildTiers(valuation.players);
+  const signalWeek = latestSignals();
+  const signalMatch = signalWeek ? matchSignals(state.players, signalWeek) : null;
+
   const rosteredIds = new Set(state.teams.flatMap((t) => t.roster.map((r) => r.playerId)));
 
   return (
@@ -119,6 +125,34 @@ export default async function PlayersPage() {
           />
         )}
       </Card>
+
+      {signalWeek && (
+        <Card
+          title={`Week ${signalWeek.week} — Signal and Noise`}
+          subtitle="A reading of one week's usage, dated and kept apart from the valuations above. Signal means the usage is telling you something; Noise means do not over-react to the box score."
+        >
+          <SignalWeekPanel
+            week={signalWeek}
+            entries={signalWeek.entries}
+            emptyMessage="No entries transcribed for this week."
+          />
+          {signalMatch && signalMatch.unmatched.length > 0 && (
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              Named but not found in your player pool ({signalMatch.unmatched.length}):{' '}
+              {signalMatch.unmatched.join(', ')}. Listed rather than dropped — these are
+              usually players nobody in this league rosters, but a name that should have
+              matched is worth knowing about.
+            </p>
+          )}
+          {signalMatch && (
+            <ExplainDetails
+              formula={signalMatch.explain.formula}
+              inputs={signalMatch.explain.inputs}
+              sources={signalMatch.explain.sources}
+            />
+          )}
+        </Card>
+      )}
 
       {TIER_ORDER.filter((position) => tiers.has(position)).map((position) => (
         <Card

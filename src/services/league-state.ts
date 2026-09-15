@@ -2,6 +2,7 @@ import { getProviders, resolveProviderMode, type ProviderMode } from '@/provider
 import type { LeagueState } from '@/domain/types';
 import type { ConnectionStatus } from '@/providers/types';
 import { EXPERT_RANKING_SETS, mergedExpertRankings } from '@/data/expert-rankings';
+import { EXPERT_SIGNAL_WEEKS } from '@/data/expert-signals';
 
 /**
  * League state assembly.
@@ -57,6 +58,7 @@ export async function loadLeagueState(
         matchups: sampleSnapshot.data!.matchups,
         expertRankings: mergedExpertRankings() ?? undefined,
         expertRankingSets: EXPERT_RANKING_SETS,
+        expertSignalWeeks: EXPERT_SIGNAL_WEEKS,
         draft: sampleSnapshot.data!.draft,
         currentWeek: options.week ?? 0,
       },
@@ -126,6 +128,7 @@ export async function loadLeagueState(
       matchups,
       expertRankings: mergedExpertRankings() ?? undefined,
       expertRankingSets: EXPERT_RANKING_SETS,
+      expertSignalWeeks: EXPERT_SIGNAL_WEEKS,
       draft,
       currentWeek: options.week ?? inferCurrentWeek(matchups),
     },

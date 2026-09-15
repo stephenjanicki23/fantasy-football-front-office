@@ -122,6 +122,20 @@ league** so you can explore every screen. Real data comes from ESPN or a manual 
   you profit from by waiting rather than by thinking less of him. A test asserts that
   changing the bias leaves every player's value, tier and rank identical. The setting was
   picked from a sweep of 12 seeded mocks per value, tabulated in `league-config.ts`.
+- **In-season Signal and Noise** — his weekly reads of usage, transcribed per week and kept
+  in a separate module from the preseason tiers, because they are a different kind of
+  evidence: a tier is a standing opinion about a player, a Signal is a reading of one game
+  and its whole point is that it expires. Entries carry the week, his own framing ("base
+  rates being updated, not conclusions"), and — where he says one outright — a roster move:
+  sell low, stash, cuttable, handcuff, trade away. Shown on the players page in full, and
+  split on the waivers page by whether you hold the player, since "cuttable in shallower
+  leagues" is a decision only if he is on your bench. Nothing here touches a valuation.
+- **Coverage is stated, because these publish in parts** — a week's file is usually a few
+  games, not the week. Each transcription records which games it covers, which of them were
+  cut off before their Signal/Noise lists, and says so on the page. Anything he wrote about
+  but had not yet labelled is marked `Unlabelled` rather than promoted into Signal, and a
+  test enforces it: an empty result has to read as "he has not been read on that game", not
+  as "he had nothing to say".
 - **TARGET / FADE, shown but not scored** — his labels are about price, not talent: a Fade
   is a player he will not pay the market rate for, and his rank already carries his opinion
   of the player. Scoring the label on top of the rank would penalise him twice on a signal
